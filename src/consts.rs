@@ -1,5 +1,5 @@
-pub const MAX_DUTY: u16 = 333;
-pub const MIN_DUTY: u16 = 33; // 10% usually when a pwm fan starts to spin
+pub const MAX_DUTY: u16 = 2000;
+pub const MIN_DUTY: u16 = 200; // 10% usually when a pwm fan starts to spin
 /// 10k resistor measured resistance in Ohms
 pub const R_10K: f32 = 9950.0;
 /// voltage

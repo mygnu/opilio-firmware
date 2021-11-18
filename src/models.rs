@@ -1,11 +1,12 @@
 use core::ops::Deref;
 
-use super::consts;
 use defmt::Format;
 use heapless::Vec;
 use postcard::{from_bytes, to_vec};
 use serde::{Deserialize, Serialize};
 use stm32f1xx_hal::flash::{FlashWriter, SZ_1K};
+
+use super::consts;
 
 pub const CONFIG_SIZE: usize = 13; // core::mem::size_of::<Config>();
 pub const BUF_SIZE: usize = CONFIG_SIZE * 4;
@@ -21,7 +22,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn new(id: u8) -> Self {
+    fn new(id: u8) -> Self {
         Self {
             id,
             min_duty: consts::MIN_DUTY,
@@ -82,7 +83,9 @@ impl FanControl {
     }
 
     pub fn load_from_flash(&mut self, writer: &mut FlashWriter) {
-        if let Ok(bytes) = writer.read(consts::FLASH_START_OFFSET, SZ_1K as usize) {
+        if let Ok(bytes) =
+            writer.read(consts::FLASH_START_OFFSET, SZ_1K as usize)
+        {
             self.configs.iter_mut().for_each(|c| {
                 let start = c.offset();
                 let end = start + CONFIG_SIZE;
