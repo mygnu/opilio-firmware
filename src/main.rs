@@ -57,10 +57,8 @@ fn main() -> ! {
     fan_control.load_from_flash(&mut writer);
 
     fan_control.print();
-    // let clocks = rcc.cfgr.adcclk(2.mhz()).freeze(&mut flash.acr);
 
-    let clocks = rcc.cfgr.adcclk(1.mhz()).freeze(&mut flash.acr);
-    defmt::println!("adc freq: {}", clocks.adcclk().0);
+    let clocks = rcc.cfgr.adcclk(2.mhz()).freeze(&mut flash.acr);
 
     // Setup ADC
     let mut adc1 = Adc::adc1(p.ADC1, &mut rcc.apb2, clocks);
