@@ -75,15 +75,12 @@ fn main() -> ! {
     // Setup ADC
     let mut adc1 = Adc::adc1(p.ADC1, &mut rcc.apb2, clocks);
 
-    let mut timer4 =
-        Timer::tim4(p.TIM4, &clocks, &mut rcc.apb1).start_count_down(700.ms());
-
     let mut afio = p.AFIO.constrain(&mut rcc.apb2);
     let mut gpioa = p.GPIOA.split(&mut rcc.apb2);
-    let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
+    let gpiob = p.GPIOB.split(&mut rcc.apb2);
 
     // Configure pb0 as an analog input
-    let mut ch0 = gpiob.pb0.into_analog(&mut gpiob.crl);
+    let mut ch0 = gpioa.pa4.into_analog(&mut gpioa.crl);
     // TIM2
     let a0 = gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl);
     let a1 = gpioa.pa1.into_alternate_push_pull(&mut gpioa.crl);
@@ -92,33 +89,40 @@ fn main() -> ! {
 
     let pwm_output_pins = (a0, a1, a2, a3);
 
-    let mut pwm_timer: PwmTimer = Timer::tim2(p.TIM2, &clocks, &mut rcc.apb1)
+    // let mut pwm_timer1: PwmTimer = Timer::tim1(p.TIM1, &clocks, &mut rcc.apb1)
+    //     .pwm(pwm_output_pins, &mut afio.mapr, 24.khz());
+    let mut pwm_timer2: PwmTimer = Timer::tim2(p.TIM2, &clocks, &mut rcc.apb1)
         .pwm(pwm_output_pins, &mut afio.mapr, 24.khz());
-    setup_pwm(&mut pwm_timer);
+    setup_pwm(&mut pwm_timer2);
 
     let (_pa15, _pb3, pb4) =
         afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
-    let pb5 = gpiob.pb5;
+    let pwm_input_pins = (pb4, gpiob.pb5);
+    let pwm_input_timer3 = Timer::tim3(p.TIM3, &clocks, &mut rcc.apb1)
+        .pwm_input(
+            pwm_input_pins,
+            &mut afio.mapr,
+            &mut dbg,
+            Configuration::Frequency(5.hz()),
+        );
+    let mut countdown_timer4 =
+        Timer::tim4(p.TIM4, &clocks, &mut rcc.apb1).start_count_down(700.ms());
 
-    let pwm_input_pins = (pb4, pb5);
-
-    let pwm_input1 = Timer::tim3(p.TIM3, &clocks, &mut rcc.apb1).pwm_input(
-        pwm_input_pins,
-        &mut afio.mapr,
-        &mut dbg,
-        Configuration::Frequency(20.hz()),
-    );
+    let max_duty = pwm_timer2.get_max_duty();
 
     loop {
-        nb::block!(timer4.wait()).unwrap();
+        nb::block!(countdown_timer4.wait()).unwrap();
         if let Ok(adc1_reading) = adc1.read(&mut ch0) {
             let temp = get_temperature(adc1_reading);
-            let duty = tem_to_duty(temp);
-            defmt::info!("DUTY {}", duty);
-            pwm_timer.set_duty(Channel::C1, duty);
+
+            let duty = fan_control.temp_to_duty(0, temp);
+            let actual_duty = max_duty / 100 * duty as u16;
+            defmt::println!("{}:{}:{}", duty, max_duty, actual_duty);
+            pwm_timer2.set_duty(Channel::C1, actual_duty);
         }
 
-        if let Ok(freq) = pwm_input1.read_frequency(ReadMode::Instant, &clocks)
+        if let Ok(freq) =
+            pwm_input_timer3.read_frequency(ReadMode::Instant, &clocks)
         {
             defmt::trace!("1Htz: {}", freq.0);
             defmt::debug!("1RPM: {}", freq.0 * 30);
@@ -126,20 +130,19 @@ fn main() -> ! {
     }
 }
 
-fn setup_pwm(pwm_timer: &mut PwmTimer) {
+fn setup_pwm(pwm_timer2: &mut PwmTimer) {
     // Enable clock on each of the channels
-    pwm_timer.enable(Channel::C1);
-    pwm_timer.enable(Channel::C2);
-    pwm_timer.enable(Channel::C3);
-    pwm_timer.enable(Channel::C4);
+    pwm_timer2.enable(Channel::C1);
+    pwm_timer2.enable(Channel::C2);
+    pwm_timer2.enable(Channel::C3);
+    pwm_timer2.enable(Channel::C4);
 
-    defmt::println!("{}", pwm_timer.get_max_duty());
-
+    let min_duty = pwm_timer2.get_max_duty() * 10 / 100;
     // run all fans with minimum duty
-    pwm_timer.set_duty(Channel::C1, consts::MIN_DUTY);
-    pwm_timer.set_duty(Channel::C2, consts::MIN_DUTY);
-    pwm_timer.set_duty(Channel::C3, consts::MIN_DUTY);
-    pwm_timer.set_duty(Channel::C4, consts::MIN_DUTY);
+    pwm_timer2.set_duty(Channel::C1, min_duty);
+    pwm_timer2.set_duty(Channel::C2, min_duty);
+    pwm_timer2.set_duty(Channel::C3, min_duty);
+    pwm_timer2.set_duty(Channel::C4, min_duty);
 }
 
 fn get_temperature(adc1_reading: u16) -> f32 {
@@ -160,17 +163,4 @@ fn get_temperature(adc1_reading: u16) -> f32 {
     let c = temp_k - consts::ZERO_K_IN_C;
     defmt::debug!("C {}", c);
     c
-}
-
-fn tem_to_duty(temp: f32) -> u16 {
-    if temp <= consts::MIN_TEMP {
-        0 // stop the fan if tem is really low
-    } else if temp >= consts::MAX_TEMP {
-        consts::MAX_DUTY
-    } else {
-        ((consts::MAX_DUTY - consts::MIN_DUTY) as f32
-            * (temp - consts::MIN_TEMP)
-            / (consts::MAX_TEMP - consts::MIN_TEMP)
-            + consts::MIN_DUTY as f32) as u16
-    }
 }

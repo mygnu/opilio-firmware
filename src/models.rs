@@ -15,8 +15,8 @@ pub const BUF_SIZE: usize = CONFIG_SIZE * 4;
 #[repr(C)]
 pub struct Config {
     id: u8,
-    min_duty: u16,
-    max_duty: u16,
+    min_duty: f32,
+    max_duty: f32,
     min_temp: f32,
     max_temp: f32,
 }
@@ -68,19 +68,32 @@ impl FanControl {
         })
     }
 
-    pub fn tem_to_duty(&self, id: usize, temp: f32) -> u16 {
+    pub fn temp_to_duty(&self, id: usize, temp: f32) -> f32 {
         let id = id.min(4);
         let conf = &self.configs[id];
         if temp <= conf.min_temp {
-            0 // stop the fan if tem is really low
+            0.0 // stop the fan if tem is really low
         } else if temp >= conf.max_temp {
             conf.max_duty
         } else {
-            ((conf.max_duty - conf.max_duty) as f32 * (temp - conf.min_temp)
+            (conf.max_duty - conf.min_duty) * (temp - conf.min_temp)
                 / (conf.max_temp - conf.min_temp)
-                + conf.max_duty as f32) as u16
+                + conf.min_duty
         }
     }
+
+    // fn tem_to_duty(temp: f32) -> u16 {
+    //     if temp <= consts::MIN_TEMP {
+    //         0 // stop the fan if tem is really low
+    //     } else if temp >= consts::MAX_TEMP {
+    //         consts::MAX_DUTY
+    //     } else {
+    //         ((consts::MAX_DUTY - consts::MIN_DUTY) as f32
+    //             * (temp - consts::MIN_TEMP)
+    //             / (consts::MAX_TEMP - consts::MIN_TEMP)
+    //             + consts::MIN_DUTY as f32) as u16
+    //     }
+    // }
 
     pub fn load_from_flash(&mut self, writer: &mut FlashWriter) {
         if let Ok(bytes) =
