@@ -85,14 +85,12 @@ fn main() -> ! {
         .pclk1(24.mhz())
         .freeze(&mut flash.acr);
 
-    // Setup ADC
     let mut adc1 = Adc::adc1(p.ADC1, &mut rcc.apb2, clocks);
-
     let mut afio = p.AFIO.constrain(&mut rcc.apb2);
     let mut gpioa = p.GPIOA.split(&mut rcc.apb2);
     let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
 
-    // Configure pb0 as an analog input
+    // Configure pa4 as an analog input
     let mut pa4 = gpioa.pa4.into_analog(&mut gpioa.crl);
     let mut countdown_timer1 =
         Timer::tim1(p.TIM1, &clocks, &mut rcc.apb2).start_count_down(700.ms());
@@ -107,27 +105,6 @@ fn main() -> ! {
     let mut pwm_timer2: PwmTimer2 = Timer::tim2(p.TIM2, &clocks, &mut rcc.apb1)
         .pwm::<Tim2NoRemap, _, _, _>(pins_a0_a3, &mut afio.mapr, 24.khz());
     setup_pwm_t2(&mut pwm_timer2);
-
-    // Tim3NoRemap: (TIM3, 0b00, PA6, PA7, PB0, PB1),
-    // let mut pwm_timer1: PwmTimer2 = Timer::tim1(p.TIM1, &clocks, &mut rcc.apb1)
-    //     .pwm(pwm_output_pins, &mut afio.mapr, 24.khz());
-
-    // let (_pa15, _pb3, pb4) =
-    //     afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
-    // let pwm_input_pins = (pb4, gpiob.pb5);
-    let pwm_input_pins = (
-        gpiob.pb6.into_floating_input(&mut gpiob.crl),
-        gpiob.pb7.into_floating_input(&mut gpiob.crl),
-    );
-    let pwm_input_timer4 = Timer::tim4(p.TIM4, &clocks, &mut rcc.apb1)
-        .pwm_input(
-            pwm_input_pins,
-            &mut afio.mapr,
-            &mut dbg,
-            Configuration::Frequency(5.hz()),
-        );
-
-    let max_duty = pwm_timer2.get_max_duty();
 
     let pins_a6_a9_b0_b1 = (
         gpioa.pa6.into_alternate_push_pull(&mut gpioa.crl),
@@ -146,6 +123,20 @@ fn main() -> ! {
     pwm_timer3.set_duty(Channel::C1, 1000);
 
     setup_pwm_t3(&mut pwm_timer3);
+
+    let pwm_input_pins = (
+        gpiob.pb6.into_floating_input(&mut gpiob.crl),
+        gpiob.pb7.into_floating_input(&mut gpiob.crl),
+    );
+    let pwm_input_timer4 = Timer::tim4(p.TIM4, &clocks, &mut rcc.apb1)
+        .pwm_input(
+            pwm_input_pins,
+            &mut afio.mapr,
+            &mut dbg,
+            Configuration::Frequency(5.hz()),
+        );
+
+    let max_duty = pwm_timer2.get_max_duty();
 
     loop {
         nb::block!(countdown_timer1.wait()).unwrap();
