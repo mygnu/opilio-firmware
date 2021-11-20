@@ -81,19 +81,22 @@ fn main() -> ! {
 
     // Configure pb0 as an analog input
     let mut ch0 = gpioa.pa4.into_analog(&mut gpioa.crl);
-    // TIM2
-    let a0 = gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl);
-    let a1 = gpioa.pa1.into_alternate_push_pull(&mut gpioa.crl);
-    let a2 = gpioa.pa2.into_alternate_push_pull(&mut gpioa.crl);
-    let a3 = gpioa.pa3.into_alternate_push_pull(&mut gpioa.crl);
 
-    let pwm_output_pins = (a0, a1, a2, a3);
+    let pins_a0_a3 = (
+        gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl),
+        gpioa.pa1.into_alternate_push_pull(&mut gpioa.crl),
+        gpioa.pa2.into_alternate_push_pull(&mut gpioa.crl),
+        gpioa.pa3.into_alternate_push_pull(&mut gpioa.crl),
+    );
 
+    let mut pwm_timer2: PwmTimer =
+        Timer::tim2(p.TIM2, &clocks, &mut rcc.apb1)
+            .pwm::<Tim2NoRemap, _, _, _>(pins_a0_a3, &mut afio.mapr, 24.khz());
+    setup_pwm(&mut pwm_timer2);
+
+    // Tim3NoRemap: (TIM3, 0b00, PA6, PA7, PB0, PB1),
     // let mut pwm_timer1: PwmTimer = Timer::tim1(p.TIM1, &clocks, &mut rcc.apb1)
     //     .pwm(pwm_output_pins, &mut afio.mapr, 24.khz());
-    let mut pwm_timer2: PwmTimer = Timer::tim2(p.TIM2, &clocks, &mut rcc.apb1)
-        .pwm(pwm_output_pins, &mut afio.mapr, 24.khz());
-    setup_pwm(&mut pwm_timer2);
 
     let (_pa15, _pb3, pb4) =
         afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
