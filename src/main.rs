@@ -11,7 +11,7 @@ use stm32f1xx_hal::{
     adc::Adc,
     flash::{FlashSize, SectorSize},
     gpio::{
-        gpioa::{PA0, PA1, PA2, PA3, PA6, PA7, PA9},
+        gpioa::{PA0, PA1, PA2, PA3, PA6, PA7},
         gpiob::{PB0, PB1},
         Alternate, PushPull,
     },
@@ -21,10 +21,10 @@ use stm32f1xx_hal::{
     pwm_input::{Configuration, ReadMode},
     time::U32Ext,
     timer::{Tim2NoRemap, Tim3NoRemap, Timer},
-    usb::UsbBusType,
+    // usb::UsbBusType,
 };
-use usb_device::{bus::UsbBusAllocator, prelude::*};
-use usbd_serial::{SerialPort, USB_CLASS_CDC};
+// use usb_device::{bus::UsbBusAllocator, prelude::*};
+// use usbd_serial::{SerialPort, USB_CLASS_CDC};
 use water_crab::{
     consts,
     models::{FanControl, CONFIG_SIZE},
@@ -54,9 +54,9 @@ type PwmTimer3 = Pwm<
     ),
 >;
 
-static mut USB_BUS: Option<UsbBusAllocator<UsbBusType>> = None;
-static mut USB_SERIAL: Option<usbd_serial::SerialPort<UsbBusType>> = None;
-static mut USB_DEVICE: Option<UsbDevice<UsbBusType>> = None;
+// static mut USB_BUS: Option<UsbBusAllocator<UsbBusType>> = None;
+// static mut USB_SERIAL: Option<usbd_serial::SerialPort<UsbBusType>> = None;
+// static mut USB_DEVICE: Option<UsbDevice<UsbBusType>> = None;
 
 #[entry]
 fn main() -> ! {
