@@ -13,9 +13,9 @@ use nb::block;
 use stm32f1xx_hal::{
     adc::Adc,
     flash::{FlashSize, SectorSize},
-    pac::{self, TIM4},
+    pac,
     prelude::*,
-    pwm_input::{Configuration, PwmInput, ReadMode},
+    pwm_input::{Configuration, ReadMode},
     time::U32Ext,
     timer::{Tim2NoRemap, Tim3NoRemap, Timer},
     usb::{Peripheral, UsbBus},
@@ -35,7 +35,7 @@ fn main() -> ! {
     let mut flash = p.FLASH.constrain();
     let mut rcc = p.RCC.constrain();
     let mut dbg = p.DBGMCU;
-    let mut writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
+    let _writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
 
     defmt::println!("CHUNK_SIZE {}", CHUNK_SIZE);
 
