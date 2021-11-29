@@ -1,5 +1,5 @@
-pub const MAX_DUTY: f32 = 100.0;
-pub const MIN_DUTY: f32 = 10.0; // 10% usually when a pwm fan starts to spin
+pub const MAX_DUTY_PERCENT: f32 = 100.0;
+pub const MIN_DUTY_PERCENT: f32 = 10.0; // 10% usually when a pwm fan starts to spin
 /// 10k resistor measured resistance in Ohms
 pub const R_10K: f32 = 9950.0;
 /// voltage
@@ -18,3 +18,5 @@ pub const ADC_RESOLUTION: f32 = 4096.0;
 /// used by program: 50 KIB or 51200 bytes
 /// we can use the rest of the 64K memory (14kb) for storage
 pub const FLASH_START_OFFSET: u32 = 0x0C800;
+
+pub const MAX_DUTY_PWM: u16 = 2000;

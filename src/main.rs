@@ -5,58 +5,28 @@
 #![no_main]
 #![no_std]
 
+use cortex_m::asm::delay;
 use cortex_m_rt::entry;
-use micromath::F32Ext;
+use embedded_hal::digital::v2::OutputPin;
+
+use nb::block;
 use stm32f1xx_hal::{
     adc::Adc,
     flash::{FlashSize, SectorSize},
-    gpio::{
-        gpioa::{PA0, PA1, PA2, PA3, PA6, PA7},
-        gpiob::{PB0, PB1},
-        Alternate, PushPull,
-    },
-    pac,
+    pac::{self, TIM4},
     prelude::*,
-    pwm::{self, Channel, Pwm},
-    pwm_input::{Configuration, ReadMode},
+    pwm_input::{Configuration, PwmInput, ReadMode},
     time::U32Ext,
     timer::{Tim2NoRemap, Tim3NoRemap, Timer},
-    // usb::UsbBusType,
+    usb::{Peripheral, UsbBus},
 };
-// use usb_device::{bus::UsbBusAllocator, prelude::*};
-// use usbd_serial::{SerialPort, USB_CLASS_CDC};
-use water_crab::{
-    consts,
-    models::{FanControl, CONFIG_SIZE},
+use usb_device::prelude::*;
+use usbd_serial::{SerialPort, USB_CLASS_CDC};
+
+use opilio::{
+    controller::{Controller, CHUNK_SIZE},
+    MuxController, MuxInput, PwmInputTimer, PwmTimer2, PwmTimer3,
 };
-
-type PwmTimer2 = Pwm<
-    pac::TIM2,
-    Tim2NoRemap,
-    (pwm::C1, pwm::C2, pwm::C3, pwm::C4),
-    (
-        PA0<Alternate<PushPull>>,
-        PA1<Alternate<PushPull>>,
-        PA2<Alternate<PushPull>>,
-        PA3<Alternate<PushPull>>,
-    ),
->;
-
-type PwmTimer3 = Pwm<
-    pac::TIM3,
-    Tim3NoRemap,
-    (pwm::C1, pwm::C2, pwm::C3, pwm::C4),
-    (
-        PA6<Alternate<PushPull>>,
-        PA7<Alternate<PushPull>>,
-        PB0<Alternate<PushPull>>,
-        PB1<Alternate<PushPull>>,
-    ),
->;
-
-// static mut USB_BUS: Option<UsbBusAllocator<UsbBusType>> = None;
-// static mut USB_SERIAL: Option<usbd_serial::SerialPort<UsbBusType>> = None;
-// static mut USB_DEVICE: Option<UsbDevice<UsbBusType>> = None;
 
 #[entry]
 fn main() -> ! {
@@ -67,33 +37,70 @@ fn main() -> ! {
     let mut dbg = p.DBGMCU;
     let mut writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
 
-    defmt::println!("CONFIG_SIZE {}", CONFIG_SIZE);
+    defmt::println!("CHUNK_SIZE {}", CHUNK_SIZE);
 
-    let mut fan_control = FanControl::default();
+    // let mut fan_control = Controller::default();
     // fan_control.save_to_flash(&mut writer);
-    fan_control.print();
+    // fan_control.print();
 
-    fan_control.load_from_flash(&mut writer);
+    // fan_control.load_from_flash(&mut writer);
 
-    fan_control.print();
+    // fan_control.print();
 
     let clocks = rcc
         .cfgr
         .adcclk(2.mhz())
         .use_hse(8.mhz())
-        .sysclk(48.mhz())
+        .sysclk(48.mhz()) // USB requires sysclk to be at 48MHz or 72MHz
         .pclk1(24.mhz())
         .freeze(&mut flash.acr);
+    assert!(clocks.usbclk_valid());
 
-    let mut adc1 = Adc::adc1(p.ADC1, &mut rcc.apb2, clocks);
+    let adc1 = Adc::adc1(p.ADC1, &mut rcc.apb2, clocks);
     let mut afio = p.AFIO.constrain(&mut rcc.apb2);
     let mut gpioa = p.GPIOA.split(&mut rcc.apb2);
     let mut gpiob = p.GPIOB.split(&mut rcc.apb2);
 
+    // BluePill board has a pull-up resistor on the D+ line.
+    // Pull the D+ pin down to send a RESET condition to the USB bus.
+    // This forced reset is needed only for development, without it host
+    // will not reset your device when you upload new firmware.
+    let mut usb_dp = gpioa.pa12.into_push_pull_output(&mut gpioa.crh);
+    usb_dp.set_low().ok();
+    delay(clocks.sysclk().0 / 100);
+
+    let usb_dm = gpioa.pa11;
+    let usb_dp = usb_dp.into_floating_input(&mut gpioa.crh);
+
+    let usb = Peripheral {
+        usb: p.USB,
+        pin_dm: usb_dm,
+        pin_dp: usb_dp,
+    };
+    let usb_bus = UsbBus::new(usb);
+
+    let mut serial = SerialPort::new(&usb_bus);
+
+    let mut usb_dev =
+        UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0010))
+            .manufacturer("LOCAL")
+            .product("Water Crab: Open Source PC Fan Controller")
+            .serial_number("0xA455")
+            .device_class(USB_CLASS_CDC)
+            .build();
+
     // Configure pa4 as an analog input
-    let mut pa4 = gpioa.pa4.into_analog(&mut gpioa.crl);
+    let pa4 = gpioa.pa4.into_analog(&mut gpioa.crl);
+    let pb12 = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
+    let pb13 = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
+    let pb14 = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
+
+    let mut mux = MuxController::new(pb12, pb13, pb14);
+
+    mux.enable(MuxInput::L1);
+
     let mut countdown_timer1 =
-        Timer::tim1(p.TIM1, &clocks, &mut rcc.apb2).start_count_down(700.ms());
+        Timer::tim1(p.TIM1, &clocks, &mut rcc.apb2).start_count_down(500.ms());
 
     let pins_a0_a3 = (
         gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl),
@@ -102,9 +109,9 @@ fn main() -> ! {
         gpioa.pa3.into_alternate_push_pull(&mut gpioa.crl),
     );
 
-    let mut pwm_timer2: PwmTimer2 = Timer::tim2(p.TIM2, &clocks, &mut rcc.apb1)
-        .pwm::<Tim2NoRemap, _, _, _>(pins_a0_a3, &mut afio.mapr, 24.khz());
-    setup_pwm_t2(&mut pwm_timer2);
+    let pwm_timer2: PwmTimer2 =
+        Timer::tim2(p.TIM2, &clocks, &mut rcc.apb1)
+            .pwm::<Tim2NoRemap, _, _, _>(pins_a0_a3, &mut afio.mapr, 24.khz());
 
     let pins_a6_a9_b0_b1 = (
         gpioa.pa6.into_alternate_push_pull(&mut gpioa.crl),
@@ -113,44 +120,44 @@ fn main() -> ! {
         gpiob.pb1.into_alternate_push_pull(&mut gpiob.crl),
     );
 
-    let mut pwm_timer3: PwmTimer3 = Timer::tim3(p.TIM3, &clocks, &mut rcc.apb1)
+    let pwm_timer3: PwmTimer3 = Timer::tim3(p.TIM3, &clocks, &mut rcc.apb1)
         .pwm::<Tim3NoRemap, _, _, _>(
-            pins_a6_a9_b0_b1,
-            &mut afio.mapr,
-            24.khz(),
-        );
-    pwm_timer3.enable(Channel::C1);
-    pwm_timer3.set_duty(Channel::C1, 1000);
-
-    setup_pwm_t3(&mut pwm_timer3);
+        pins_a6_a9_b0_b1,
+        &mut afio.mapr,
+        24.khz(),
+    );
 
     let pwm_input_pins = (
         gpiob.pb6.into_floating_input(&mut gpiob.crl),
         gpiob.pb7.into_floating_input(&mut gpiob.crl),
     );
-    let pwm_input_timer4 = Timer::tim4(p.TIM4, &clocks, &mut rcc.apb1)
-        .pwm_input(
+    let pwm_input_timer4: PwmInputTimer =
+        Timer::tim4(p.TIM4, &clocks, &mut rcc.apb1).pwm_input(
             pwm_input_pins,
             &mut afio.mapr,
             &mut dbg,
-            Configuration::Frequency(5.hz()),
+            Configuration::DutyCycle(0.hz()),
         );
 
-    let max_duty = pwm_timer2.get_max_duty();
+    let mut controller = Controller::new(pwm_timer2, pwm_timer3, adc1, pa4);
 
     loop {
-        nb::block!(countdown_timer1.wait()).unwrap();
-        if let Ok(adc1_reading) = adc1.read(&mut pa4) {
-            let temp = get_temperature(adc1_reading);
+        block!(countdown_timer1.wait()).ok();
 
-            let duty = fan_control.temp_to_duty(0, temp);
-            let actual_duty = max_duty / 100 * duty as u16;
-            defmt::println!("{}:{}:{}", duty, max_duty, actual_duty);
-            let current_duty = pwm_timer2.get_duty(Channel::C1);
-            if current_duty != actual_duty {
-                pwm_timer2.set_duty(Channel::C1, actual_duty);
+        if usb_dev.poll(&mut [&mut serial]) {
+            let mut buf = [0u8; 32];
+
+            match serial.read(&mut buf) {
+                Ok(count) if count > 0 => {
+                    defmt::println!("got {:?}", buf);
+
+                    //reply(&buf, &mut serial);
+                }
+                _ => {}
             }
         }
+
+        controller.adjust_pwm();
 
         if let Ok(freq) =
             pwm_input_timer4.read_frequency(ReadMode::Instant, &clocks)
@@ -161,52 +168,16 @@ fn main() -> ! {
     }
 }
 
-fn setup_pwm_t2(pwm_timer2: &mut PwmTimer2) {
-    // Enable clock on each of the channels
-    pwm_timer2.enable(Channel::C1);
-    pwm_timer2.enable(Channel::C2);
-    pwm_timer2.enable(Channel::C3);
-    pwm_timer2.enable(Channel::C4);
-
-    let min_duty = pwm_timer2.get_max_duty() * 10 / 100;
-    // run all fans with minimum duty
-    pwm_timer2.set_duty(Channel::C1, min_duty);
-    pwm_timer2.set_duty(Channel::C2, min_duty);
-    pwm_timer2.set_duty(Channel::C3, min_duty);
-    pwm_timer2.set_duty(Channel::C4, min_duty);
+pub struct RpmReader {
+    mux: MuxController,
+    pwm_input_timer: PwmInputTimer,
 }
 
-fn setup_pwm_t3(pwm_timer3: &mut PwmTimer3) {
-    // Enable clock on each of the channels
-    pwm_timer3.enable(Channel::C1);
-    pwm_timer3.enable(Channel::C2);
-    pwm_timer3.enable(Channel::C3);
-    pwm_timer3.enable(Channel::C4);
-
-    let min_duty = pwm_timer3.get_max_duty() * 10 / 100;
-    // run all fans with minimum duty
-    pwm_timer3.set_duty(Channel::C1, min_duty);
-    pwm_timer3.set_duty(Channel::C2, min_duty);
-    pwm_timer3.set_duty(Channel::C3, min_duty);
-    pwm_timer3.set_duty(Channel::C4, min_duty);
-}
-
-fn get_temperature(adc1_reading: u16) -> f32 {
-    let v_out: f32 =
-        adc1_reading as f32 * consts::V_SUPPLY / consts::ADC_RESOLUTION;
-    defmt::trace!("v_out {}", v_out);
-    defmt::trace!("adc1: {}", adc1_reading);
-
-    let r_ntc = (v_out * consts::R_10K) / (consts::V_SUPPLY - v_out);
-    defmt::trace!("rt {}", r_ntc);
-
-    let t_25_c_in_k = consts::ZERO_K_IN_C + 25.0;
-
-    let temp_k = (t_25_c_in_k * consts::B_PARAM)
-        / (t_25_c_in_k * (r_ntc / consts::R_10K).ln() + consts::B_PARAM);
-
-    defmt::trace!("k {}", temp_k);
-    let c = temp_k - consts::ZERO_K_IN_C;
-    defmt::debug!("C {}", c);
-    c
+impl RpmReader {
+    pub fn new(pwm_input_timer: PwmInputTimer, mux: MuxController) -> Self {
+        Self {
+            mux,
+            pwm_input_timer,
+        }
+    }
 }

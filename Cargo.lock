@@ -305,6 +305,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
+name = "opilio"
+version = "0.1.0"
+dependencies = [
+ "cortex-m 0.7.3",
+ "cortex-m-rt",
+ "defmt",
+ "defmt-rtt",
+ "embedded-hal",
+ "heapless",
+ "micromath",
+ "nb 1.0.0",
+ "panic-probe",
+ "postcard",
+ "serde",
+ "stm32f1xx-hal",
+ "usb-device",
+ "usbd-serial",
+]
+
+[[package]]
 name = "panic-probe"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -602,24 +622,4 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ee8f19f9d74293faf70901bc20ad067dc1ad390d2cbf1e3f75f721ffee908b6"
 dependencies = [
  "vcell",
-]
-
-[[package]]
-name = "water_crab"
-version = "0.1.0"
-dependencies = [
- "cortex-m 0.7.3",
- "cortex-m-rt",
- "defmt",
- "defmt-rtt",
- "embedded-hal",
- "heapless",
- "micromath",
- "nb 1.0.0",
- "panic-probe",
- "postcard",
- "serde",
- "stm32f1xx-hal",
- "usb-device",
- "usbd-serial",
 ]
