@@ -45,11 +45,6 @@ pub fn exit() -> ! {
     }
 }
 
-pub enum Error {
-    InvalidConfiguration = 0x01,
-    ReadingFlash = 0x02,
-}
-
 pub type PwmInputTimer = PwmInput<
     pac::TIM4,
     Tim4NoRemap,
@@ -150,7 +145,6 @@ impl MuxController {
                 self.s1.set_high().ok();
                 self.s2.set_high().ok();
             }
-            _ => {}
         };
     }
 }

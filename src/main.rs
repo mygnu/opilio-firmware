@@ -16,6 +16,7 @@ use stm32f1xx_hal::{
     pac,
     prelude::*,
     pwm_input::{Configuration, ReadMode},
+    rcc::Clocks,
     time::U32Ext,
     timer::{Tim2NoRemap, Tim3NoRemap, Timer},
     usb::{Peripheral, UsbBus},
@@ -89,16 +90,6 @@ fn main() -> ! {
             .device_class(USB_CLASS_CDC)
             .build();
 
-    // Configure pa4 as an analog input
-    let pa4 = gpioa.pa4.into_analog(&mut gpioa.crl);
-    let pb12 = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
-    let pb13 = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
-    let pb14 = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
-
-    let mut mux = MuxController::new(pb12, pb13, pb14);
-
-    mux.enable(MuxInput::L1);
-
     let mut countdown_timer1 =
         Timer::tim1(p.TIM1, &clocks, &mut rcc.apb2).start_count_down(500.ms());
 
@@ -131,7 +122,7 @@ fn main() -> ! {
         gpiob.pb6.into_floating_input(&mut gpiob.crl),
         gpiob.pb7.into_floating_input(&mut gpiob.crl),
     );
-    let pwm_input_timer4: PwmInputTimer =
+    let pwm_input_timer: PwmInputTimer =
         Timer::tim4(p.TIM4, &clocks, &mut rcc.apb1).pwm_input(
             pwm_input_pins,
             &mut afio.mapr,
@@ -139,7 +130,18 @@ fn main() -> ! {
             Configuration::DutyCycle(0.hz()),
         );
 
-    let mut controller = Controller::new(pwm_timer2, pwm_timer3, adc1, pa4);
+    // Configure pa4 as an analog input
+    let thermistor_pin = gpioa.pa4.into_analog(&mut gpioa.crl);
+    let mut controller =
+        Controller::new(pwm_timer2, pwm_timer3, adc1, thermistor_pin);
+
+    let pb12 = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
+    let pb13 = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
+    let pb14 = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
+
+    let mux = MuxController::new(pb12, pb13, pb14);
+
+    let mut rpm_reader = RpmReader::new(pwm_input_timer, mux, clocks);
 
     loop {
         block!(countdown_timer1.wait()).ok();
@@ -156,28 +158,38 @@ fn main() -> ! {
                 _ => {}
             }
         }
-
         controller.adjust_pwm();
-
-        if let Ok(freq) =
-            pwm_input_timer4.read_frequency(ReadMode::Instant, &clocks)
-        {
-            defmt::println!("Htz: {}", freq.0);
-            defmt::println!("RPM: {}", freq.0 * 30);
-        }
+        rpm_reader.read_frequencies();
     }
 }
 
 pub struct RpmReader {
     mux: MuxController,
     pwm_input_timer: PwmInputTimer,
+    clocks: Clocks,
 }
 
 impl RpmReader {
-    pub fn new(pwm_input_timer: PwmInputTimer, mux: MuxController) -> Self {
+    pub fn new(
+        pwm_input_timer: PwmInputTimer,
+        mux: MuxController,
+        clocks: Clocks,
+    ) -> Self {
         Self {
             mux,
             pwm_input_timer,
+            clocks,
+        }
+    }
+
+    pub fn read_frequencies(&mut self) {
+        self.mux.enable(MuxInput::L0);
+        if let Ok(freq) = self
+            .pwm_input_timer
+            .read_frequency(ReadMode::Instant, &self.clocks)
+        {
+            defmt::println!("Htz: {}", freq.0);
+            defmt::println!("RPM: {}", freq.0 * 30);
         }
     }
 }

@@ -26,19 +26,31 @@ pub const BUF_SIZE: usize = CHUNK_SIZE * 4;
 pub const PWM_CHANNELS: [Channel; 4] =
     [Channel::C1, Channel::C2, Channel::C3, Channel::C4];
 
-static mut CONFIGS: Option<Vec<Config, 4>> = None;
+static mut CONFIGS: Option<Vec<Config, 8>> = None;
 
 #[derive(Format, Deserialize, Serialize)]
 pub struct Config {
-    id: u8,
+    id: FanId,
     min_duty: f32,
     max_duty: f32,
     min_temp: f32,
     max_temp: f32,
 }
 
+#[derive(Format, Copy, Clone, Deserialize, Serialize)]
+pub enum FanId {
+    F0 = 0,
+    F1 = 1,
+    F2 = 2,
+    F3 = 3,
+    F4 = 4,
+    F5 = 5,
+    F6 = 6,
+    F7 = 7,
+}
+
 impl Config {
-    fn new(id: u8) -> Self {
+    fn new(id: FanId) -> Self {
         Self {
             id,
             min_duty: consts::MIN_DUTY_PERCENT,
@@ -79,11 +91,15 @@ impl Controller {
         adc: Adc<ADC1>,
         thermistor_pin: PA4<Analog>,
     ) -> Self {
-        let mut configs: Vec<Config, 4> = Vec::new();
-        configs.push(Config::new(0)).ok();
-        configs.push(Config::new(1)).ok();
-        configs.push(Config::new(2)).ok();
-        configs.push(Config::new(3)).ok();
+        let mut configs: Vec<Config, 8> = Vec::new();
+        configs.push(Config::new(FanId::F0)).ok();
+        configs.push(Config::new(FanId::F1)).ok();
+        configs.push(Config::new(FanId::F2)).ok();
+        configs.push(Config::new(FanId::F3)).ok();
+        configs.push(Config::new(FanId::F4)).ok();
+        configs.push(Config::new(FanId::F5)).ok();
+        configs.push(Config::new(FanId::F6)).ok();
+        configs.push(Config::new(FanId::F7)).ok();
 
         unsafe {
             CONFIGS = Some(configs);
@@ -116,6 +132,7 @@ impl Controller {
 
     pub fn adjust_pwm(&mut self) {
         if let Some(temp) = self.get_temperature() {
+            defmt::println!("Temp: {}", temp);
             for conf in configs() {
                 self.set_duty(&conf, temp);
             }
@@ -137,6 +154,7 @@ impl Controller {
     }
 
     fn set_duty(&mut self, conf: &Config, temp: f32) {
+        defmt::debug!("Setting duty for: {:#?}", conf);
         let duty_percent = if temp <= conf.min_temp {
             0.0 // stop the fan if tem is really low
         } else if temp >= conf.max_temp {
@@ -152,32 +170,14 @@ impl Controller {
         self.set_channel_duty(conf.id, duty_to_set)
     }
 
-    // fn get_channel_duty(&mut self, id: u8) -> u16 {
-    //     match id {
-    //         0..=3 => self.timer2.get_duty(PWM_CHANNELS[id as usize]),
-    //         4..=8 => self.timer2.get_duty(PWM_CHANNELS[(id - 4) as usize]),
-    //         _ => unreachable!("shouldn't reach "),
-    //     }
-    // }
-
-    fn set_channel_duty(&mut self, id: u8, duty: u16) {
+    fn set_channel_duty(&mut self, id: FanId, duty: u16) {
+        let id = id as usize;
         match id {
-            0..=3 => self.timer2.set_duty(PWM_CHANNELS[id as usize], duty),
-            4..=7 => {
-                self.timer2.set_duty(PWM_CHANNELS[(id - 4) as usize], duty)
-            }
+            0..=3 => self.timer2.set_duty(PWM_CHANNELS[id], duty),
+            4..=7 => self.timer2.set_duty(PWM_CHANNELS[id - 4], duty),
             _ => unreachable!("shouldn't reach "),
         }
     }
-
-    // fn set_duty(max_duty: u16, duty: f32, pwm_timer2: &mut PwmTimer2) {
-    //     let duty_to_set = max_duty / 100 * duty as u16;
-    //     defmt::println!("{}:{}:{}", duty, max_duty, duty_to_set);
-    //     let current_duty = pwm_timer2.get_duty(Channel::C1);
-    //     if current_duty != duty_to_set {
-    //         pwm_timer2.set_duty(Channel::C1, duty_to_set);
-    //     }
-    // }
 
     pub fn load_from_flash(&mut self, writer: &mut FlashWriter) {
         if let Ok(bytes) =
@@ -234,7 +234,5 @@ fn voltage_to_temp(adc_reading: u16) -> f32 {
         / (t_25_c_in_k * (r_ntc / consts::R_10K).ln() + consts::B_PARAM);
 
     defmt::trace!("k {}", temp_k);
-    let c = temp_k - consts::ZERO_K_IN_C;
-    defmt::debug!("C {}", c);
-    c
+    temp_k - consts::ZERO_K_IN_C
 }
