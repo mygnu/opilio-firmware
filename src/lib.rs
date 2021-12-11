@@ -1,10 +1,11 @@
 #![no_std]
 
-pub mod consts;
 pub mod controller;
+pub mod tacho;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
+use controller::FanId;
 use embedded_hal::digital::v2::OutputPin;
 use stm32f1xx_hal::{
     gpio::{
@@ -45,6 +46,13 @@ pub fn exit() -> ! {
     }
 }
 
+/// Result type used by Opilio.
+pub type Result<T> = ::core::result::Result<T, Error>;
+
+pub enum Error {
+    Deserialize,
+}
+
 pub type PwmInputTimer = PwmInput<
     pac::TIM4,
     Tim4NoRemap,
@@ -81,18 +89,6 @@ pub struct MuxController {
     s2: PB14<Output<PushPull>>,
 }
 
-#[derive(Copy, Clone)]
-pub enum MuxInput {
-    L0,
-    L1,
-    L2,
-    L3,
-    L4,
-    L5,
-    L6,
-    L7,
-}
-
 impl MuxController {
     pub fn new(
         s0: PB12<Output<PushPull>>,
@@ -102,45 +98,45 @@ impl MuxController {
         Self { s0, s1, s2 }
     }
 
-    pub fn enable(&mut self, input: MuxInput) {
-        use self::MuxInput::*;
+    pub fn enable(&mut self, input: FanId) {
+        use FanId::*;
         match input {
-            L0 => {
+            F0 => {
                 self.s0.set_low().ok();
                 self.s1.set_low().ok();
                 self.s2.set_low().ok();
             }
-            L1 => {
+            F1 => {
                 self.s0.set_high().ok();
                 self.s1.set_low().ok();
                 self.s2.set_low().ok();
             }
-            L2 => {
+            F2 => {
                 self.s0.set_low().ok();
                 self.s1.set_high().ok();
                 self.s2.set_low().ok();
             }
-            L3 => {
+            F3 => {
                 self.s0.set_high().ok();
                 self.s1.set_high().ok();
                 self.s2.set_low().ok();
             }
-            L4 => {
+            F4 => {
                 self.s0.set_low().ok();
                 self.s1.set_low().ok();
                 self.s2.set_high().ok();
             }
-            L5 => {
+            F5 => {
                 self.s0.set_high().ok();
                 self.s1.set_low().ok();
                 self.s2.set_high().ok();
             }
-            L6 => {
+            F6 => {
                 self.s0.set_low().ok();
                 self.s1.set_high().ok();
                 self.s2.set_high().ok();
             }
-            L7 => {
+            F7 => {
                 self.s0.set_high().ok();
                 self.s1.set_high().ok();
                 self.s2.set_high().ok();

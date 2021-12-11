@@ -15,8 +15,7 @@ use stm32f1xx_hal::{
     flash::{FlashSize, SectorSize},
     pac,
     prelude::*,
-    pwm_input::{Configuration, ReadMode},
-    rcc::Clocks,
+    pwm_input::Configuration,
     time::U32Ext,
     timer::{Tim2NoRemap, Tim3NoRemap, Timer},
     usb::{Peripheral, UsbBus},
@@ -25,8 +24,8 @@ use usb_device::prelude::*;
 use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
 use opilio::{
-    controller::{Controller, CHUNK_SIZE},
-    MuxController, MuxInput, PwmInputTimer, PwmTimer2, PwmTimer3,
+    controller::Controller, tacho::TachoReader, MuxController, PwmInputTimer,
+    PwmTimer2, PwmTimer3,
 };
 
 #[entry]
@@ -36,17 +35,6 @@ fn main() -> ! {
     let mut flash = p.FLASH.constrain();
     let mut rcc = p.RCC.constrain();
     let mut dbg = p.DBGMCU;
-    let _writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
-
-    defmt::println!("CHUNK_SIZE {}", CHUNK_SIZE);
-
-    // let mut fan_control = Controller::default();
-    // fan_control.save_to_flash(&mut writer);
-    // fan_control.print();
-
-    // fan_control.load_from_flash(&mut writer);
-
-    // fan_control.print();
 
     let clocks = rcc
         .cfgr
@@ -55,6 +43,8 @@ fn main() -> ! {
         .sysclk(48.mhz()) // USB requires sysclk to be at 48MHz or 72MHz
         .pclk1(24.mhz())
         .freeze(&mut flash.acr);
+
+    let writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
     assert!(clocks.usbclk_valid());
 
     let adc1 = Adc::adc1(p.ADC1, &mut rcc.apb2, clocks);
@@ -127,13 +117,13 @@ fn main() -> ! {
             pwm_input_pins,
             &mut afio.mapr,
             &mut dbg,
-            Configuration::DutyCycle(0.hz()),
+            Configuration::DutyCycle(1.hz()),
         );
 
     // Configure pa4 as an analog input
     let thermistor_pin = gpioa.pa4.into_analog(&mut gpioa.crl);
     let mut controller =
-        Controller::new(pwm_timer2, pwm_timer3, adc1, thermistor_pin);
+        Controller::new(pwm_timer2, pwm_timer3, adc1, thermistor_pin, writer);
 
     let pb12 = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
     let pb13 = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
@@ -141,7 +131,7 @@ fn main() -> ! {
 
     let mux = MuxController::new(pb12, pb13, pb14);
 
-    let mut rpm_reader = RpmReader::new(pwm_input_timer, mux, clocks);
+    let mut tacho_reader = TachoReader::new(pwm_input_timer, mux, clocks);
 
     loop {
         block!(countdown_timer1.wait()).ok();
@@ -159,37 +149,6 @@ fn main() -> ! {
             }
         }
         controller.adjust_pwm();
-        rpm_reader.read_frequencies();
-    }
-}
-
-pub struct RpmReader {
-    mux: MuxController,
-    pwm_input_timer: PwmInputTimer,
-    clocks: Clocks,
-}
-
-impl RpmReader {
-    pub fn new(
-        pwm_input_timer: PwmInputTimer,
-        mux: MuxController,
-        clocks: Clocks,
-    ) -> Self {
-        Self {
-            mux,
-            pwm_input_timer,
-            clocks,
-        }
-    }
-
-    pub fn read_frequencies(&mut self) {
-        self.mux.enable(MuxInput::L0);
-        if let Ok(freq) = self
-            .pwm_input_timer
-            .read_frequency(ReadMode::Instant, &self.clocks)
-        {
-            defmt::println!("Htz: {}", freq.0);
-            defmt::println!("RPM: {}", freq.0 * 30);
-        }
+        tacho_reader.read_frequencies();
     }
 }
