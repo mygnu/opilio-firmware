@@ -39,13 +39,14 @@ pub const ADC_RESOLUTION: f32 = 4096.0;
 /// start address: 0x08000000
 /// used by program: 50 KIB or 51200 bytes
 /// we can use the rest of the 64K memory (14kb) for storage
-pub const FLASH_START_OFFSET: u32 = 0x0C800;
+// pub const FLASH_START_OFFSET: u32 = 0x0C800;
+pub const FLASH_START_OFFSET: u32 = 0xF000;
 
 pub const MAX_DUTY_PWM: u16 = 2000;
 
 pub const NO_OF_FANS: usize = 8;
 pub const CONFIG_SIZE: usize = size_of::<Config>();
-pub const FLASH_BUF_SIZE: usize = CONFIG_SIZE * NO_OF_FANS;
+pub const BUF_SIZE: usize = CONFIG_SIZE * NO_OF_FANS;
 pub const PWM_CHANNELS: [Channel; 4] =
     [Channel::C1, Channel::C2, Channel::C3, Channel::C4];
 
@@ -168,7 +169,7 @@ impl<'flash> Controller<'flash> {
 
     pub fn adjust_pwm(&mut self) {
         if let Some(temp) = self.get_temperature() {
-            defmt::println!("Temp: {}", temp);
+            defmt::info!("Temp: {}", temp);
             for conf in configs() {
                 self.set_duty(&conf, temp);
             }
@@ -185,7 +186,7 @@ impl<'flash> Controller<'flash> {
 
     pub fn print(&self) {
         configs().iter().for_each(|c| {
-            defmt::println!("{}", c);
+            defmt::debug!("{}", c);
         })
     }
 
@@ -237,7 +238,7 @@ impl<'flash> Controller<'flash> {
     }
 
     pub fn save_to_flash(&mut self) {
-        let mut buff: Vec<u8, FLASH_BUF_SIZE> = Vec::new();
+        let mut buff: Vec<u8, BUF_SIZE> = Vec::new();
 
         configs().iter().for_each(|f| {
             let mut ser: Vec<u8, CONFIG_SIZE> = to_vec(f).unwrap();

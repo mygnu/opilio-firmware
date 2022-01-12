@@ -36,6 +36,7 @@ debug = 2
 debug-assertions = true
 incremental = false
 opt-level = 3
+lto = true
 overflow-checks = true
 
 # cargo test
