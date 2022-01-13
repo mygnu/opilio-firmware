@@ -6,7 +6,9 @@ pub mod tacho;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use controller::FanId;
-use embedded_hal::digital::v2::OutputPin;
+// global logger
+use defmt_rtt as _;
+use panic_probe as _;
 use stm32f1xx_hal::{
     gpio::{
         gpioa::{PA0, PA1, PA2, PA3, PA6, PA7},
@@ -18,10 +20,6 @@ use stm32f1xx_hal::{
     pwm_input::PwmInput,
     timer::{Tim2NoRemap, Tim3NoRemap, Tim4NoRemap},
 };
-
-// global logger
-use defmt_rtt as _;
-use panic_probe as _;
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is
@@ -102,44 +100,44 @@ impl MuxController {
         use FanId::*;
         match input {
             F0 => {
-                self.s0.set_low().ok();
-                self.s1.set_low().ok();
-                self.s2.set_low().ok();
+                self.s0.set_low();
+                self.s1.set_low();
+                self.s2.set_low();
             }
             F1 => {
-                self.s0.set_high().ok();
-                self.s1.set_low().ok();
-                self.s2.set_low().ok();
+                self.s0.set_high();
+                self.s1.set_low();
+                self.s2.set_low();
             }
             F2 => {
-                self.s0.set_low().ok();
-                self.s1.set_high().ok();
-                self.s2.set_low().ok();
+                self.s0.set_low();
+                self.s1.set_high();
+                self.s2.set_low();
             }
             F3 => {
-                self.s0.set_high().ok();
-                self.s1.set_high().ok();
-                self.s2.set_low().ok();
+                self.s0.set_high();
+                self.s1.set_high();
+                self.s2.set_low();
             }
             F4 => {
-                self.s0.set_low().ok();
-                self.s1.set_low().ok();
-                self.s2.set_high().ok();
+                self.s0.set_low();
+                self.s1.set_low();
+                self.s2.set_high();
             }
             F5 => {
-                self.s0.set_high().ok();
-                self.s1.set_low().ok();
-                self.s2.set_high().ok();
+                self.s0.set_high();
+                self.s1.set_low();
+                self.s2.set_high();
             }
             F6 => {
-                self.s0.set_low().ok();
-                self.s1.set_high().ok();
-                self.s2.set_high().ok();
+                self.s0.set_low();
+                self.s1.set_high();
+                self.s2.set_high();
             }
             F7 => {
-                self.s0.set_high().ok();
-                self.s1.set_high().ok();
-                self.s2.set_high().ok();
+                self.s0.set_high();
+                self.s1.set_high();
+                self.s2.set_high();
             }
         };
     }

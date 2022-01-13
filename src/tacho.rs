@@ -1,5 +1,4 @@
 use cortex_m::asm::delay;
-use embedded_hal::digital::v2::OutputPin;
 use stm32f1xx_hal::{
     gpio::{gpiob::PB15, Output, PushPull},
     pwm_input::ReadMode,
@@ -33,9 +32,9 @@ impl TachoReader {
     pub fn read_frequencies(&mut self) {
         use FanId::*;
         for mode in [F0, F1, F2, F3, F4, F5, F6, F7] {
-            self.enable_pin.set_high().ok();
+            self.enable_pin.set_high();
             delay(self.clocks.sysclk().0 / 100);
-            self.enable_pin.set_low().ok();
+            self.enable_pin.set_low();
             self.mux.enable(mode);
             delay(self.clocks.sysclk().0 / 5);
             if let Ok(freq) = self

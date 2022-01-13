@@ -1,4 +1,7 @@
-use core::ops::{Deref, Range};
+use core::{
+    mem::size_of,
+    ops::{Deref, Range},
+};
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::Format;
@@ -12,13 +15,10 @@ use stm32f1xx_hal::{
     flash::{FlashWriter, SZ_1K},
     gpio::{gpioa::PA4, Analog},
     pac::ADC1,
+    pwm::Channel,
 };
 
 use crate::{Error, PwmTimer2, PwmTimer3, Result};
-
-use stm32f1xx_hal::pwm::Channel;
-
-use core::mem::size_of;
 
 pub const MAX_DUTY_PERCENT: f32 = 100.0;
 pub const MIN_DUTY_PERCENT: f32 = 10.0; // 10% usually when a pwm fan starts to spin
@@ -41,14 +41,10 @@ pub const ADC_RESOLUTION: f32 = 4096.0;
 /// we can use the rest of the 64K memory (14kb) for storage
 // pub const FLASH_START_OFFSET: u32 = 0x0C800;
 pub const FLASH_START_OFFSET: u32 = 0xF000;
-
 pub const MAX_DUTY_PWM: u16 = 2000;
-
 pub const NO_OF_FANS: usize = 8;
 pub const CONFIG_SIZE: usize = size_of::<Config>();
 pub const BUF_SIZE: usize = CONFIG_SIZE * NO_OF_FANS;
-pub const PWM_CHANNELS: [Channel; 4] =
-    [Channel::C1, Channel::C2, Channel::C3, Channel::C4];
 
 static mut CONFIGS: Option<Vec<Config, NO_OF_FANS>> = None;
 
@@ -72,6 +68,24 @@ pub enum FanId {
     F5 = 5,
     F6 = 6,
     F7 = 7,
+}
+
+impl FanId {
+    pub fn get_channel(&self) -> Channel {
+        use Channel::*;
+        use FanId::*;
+
+        match self {
+            F0 => C4,
+            F1 => C3,
+            F2 => C2,
+            F3 => C1,
+            F4 => C4,
+            F5 => C3,
+            F6 => C2,
+            F7 => C1,
+        }
+    }
 }
 
 impl Config {
@@ -157,9 +171,10 @@ impl<'flash> Controller<'flash> {
     }
 
     fn setup_pwm(&mut self) {
+        use Channel::*;
         let min_duty = self.max_pwm_duty * 10 / 100;
 
-        for channel in PWM_CHANNELS {
+        for channel in [C1, C2, C3, C4] {
             self.timer2.enable(channel);
             self.timer3.enable(channel);
             self.timer2.set_duty(channel, min_duty);
@@ -205,16 +220,16 @@ impl<'flash> Controller<'flash> {
 
             let duty_to_set = self.max_pwm_duty / 100 * duty_percent as u16;
 
+            defmt::debug!("duty {}", duty_to_set);
             self.set_channel_duty(conf.id, duty_to_set)
         }
     }
 
     fn set_channel_duty(&mut self, id: FanId, duty: u16) {
-        let id = id as usize;
-        match id {
-            0..=3 => self.timer2.set_duty(PWM_CHANNELS[id], duty),
-            4..=7 => self.timer2.set_duty(PWM_CHANNELS[id - 4], duty),
-            _ => unreachable!("shouldn't reach "),
+        if id as usize <= 3 {
+            self.timer3.set_duty(id.get_channel(), duty);
+        } else {
+            self.timer2.set_duty(id.get_channel(), duty)
         }
     }
 
@@ -251,7 +266,6 @@ impl<'flash> Controller<'flash> {
             defmt::debug!("buf {}", buff.deref());
         });
 
-        self.writer.change_verification(false);
         self.writer.page_erase(FLASH_START_OFFSET).ok();
 
         self.writer.write(FLASH_START_OFFSET, buff.deref()).ok();
