@@ -14,7 +14,11 @@ panic-probe = { version = "0.3.0", features = ["print-defmt"] }
 
 # hal dependencies
 embedded-hal = "0.2.3"
+heapless = "0.7"
+micromath = "2.0"
 nb = "1.0"
+postcard = "0.7"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
 stm32f1xx-hal = { version = "0.8", features = [
     "rt",
     "stm32f103",
@@ -23,10 +27,6 @@ stm32f1xx-hal = { version = "0.8", features = [
 ] }
 usb-device = "0.2.3"
 usbd-serial = "0.1.0"
-postcard = "0.7"
-heapless = "0.7"
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-micromath = "2.0"
 
 
 # cargo build/run

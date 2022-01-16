@@ -33,10 +33,10 @@ impl TachoReader {
         use FanId::*;
         for mode in [F0, F1, F2, F3, F4, F5, F6, F7] {
             self.enable_pin.set_high();
-            delay(self.clocks.sysclk().0 / 100);
+            // delay(self.clocks.sysclk().0 / 100);
             self.enable_pin.set_low();
             self.mux.enable(mode);
-            delay(self.clocks.sysclk().0 / 5);
+            // delay(self.clocks.sysclk().0 / 100);
             if let Ok(freq) = self
                 .pwm_input_timer
                 .read_frequency(ReadMode::Instant, &self.clocks)

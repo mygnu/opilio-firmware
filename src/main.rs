@@ -124,7 +124,7 @@ fn main() -> ! {
 
     loop {
         // block!(countdown_timer1.wait()).ok();
-        delay(clocks.sysclk().0 / 5);
+        // delay(clocks.sysclk().0 / 50);
 
         // defmt::println!("{}", BUF_SIZE);
 
