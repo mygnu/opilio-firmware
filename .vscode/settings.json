@@ -7,5 +7,8 @@
     "rust-analyzer.checkOnSave.extraArgs": [
         "--target",
         "thumbv7m-none-eabi"
+    ],
+    "cSpell.words": [
+        "usbclk"
     ]
 }

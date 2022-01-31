@@ -4,7 +4,7 @@ use core::{
 };
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
-use defmt::Format;
+use defmt::{debug, Format};
 use embedded_hal::Pwm;
 use heapless::Vec;
 use micromath::F32Ext;
@@ -48,7 +48,7 @@ pub const BUF_SIZE: usize = CONFIG_SIZE * NO_OF_FANS;
 
 static mut CONFIGS: Option<Vec<Config, NO_OF_FANS>> = None;
 
-#[derive(Format, Deserialize, Serialize)]
+#[derive(Copy, Clone, Format, Deserialize, Serialize)]
 pub struct Config {
     id: FanId,
     enabled: bool,
@@ -100,25 +100,41 @@ impl Config {
         }
     }
 
-    fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         self.min_duty >= MIN_DUTY_PERCENT
             && self.max_duty <= MAX_DUTY_PERCENT
             && self.min_temp >= MIN_TEMP
             && self.max_temp <= MAX_TEMP
     }
 
-    fn offset_range(&self) -> Range<usize> {
+    pub fn offset_range(&self) -> Range<usize> {
         let start = self.id as usize * CONFIG_SIZE;
         let end = start + CONFIG_SIZE;
         start..end
     }
 }
 
-fn configs() -> &'static mut [Config] {
-    unsafe { CONFIGS.as_deref_mut().unwrap() }
-}
+// fn configs() -> &'static mut [Config] {
+//     unsafe { CONFIGS.as_deref_mut().unwrap() }
+// }
 
-fn initialize_configs() {
+// fn initialize_configs() {
+//     let mut configs: Vec<Config, 8> = Vec::new();
+//     configs.push(Config::new(FanId::F0)).ok();
+//     configs.push(Config::new(FanId::F1)).ok();
+//     configs.push(Config::new(FanId::F2)).ok();
+//     configs.push(Config::new(FanId::F3)).ok();
+//     configs.push(Config::new(FanId::F4)).ok();
+//     configs.push(Config::new(FanId::F5)).ok();
+//     configs.push(Config::new(FanId::F6)).ok();
+//     configs.push(Config::new(FanId::F7)).ok();
+
+//     unsafe {
+//         CONFIGS = Some(configs);
+//     }
+// }
+
+pub fn default_configs() -> Vec<Config, 8> {
     let mut configs: Vec<Config, 8> = Vec::new();
     configs.push(Config::new(FanId::F0)).ok();
     configs.push(Config::new(FanId::F1)).ok();
@@ -129,29 +145,24 @@ fn initialize_configs() {
     configs.push(Config::new(FanId::F6)).ok();
     configs.push(Config::new(FanId::F7)).ok();
 
-    unsafe {
-        CONFIGS = Some(configs);
-    }
+    configs
 }
 
-pub struct Controller<'flash> {
+pub struct Controller {
     adc: Adc<ADC1>,
     thermistor_pin: PA4<Analog>,
     timer2: PwmTimer2,
     timer3: PwmTimer3,
     max_pwm_duty: u16,
-    writer: FlashWriter<'flash>,
 }
 
-impl<'flash> Controller<'flash> {
+impl Controller {
     pub fn new(
         timer2: PwmTimer2,
         timer3: PwmTimer3,
         adc: Adc<ADC1>,
         thermistor_pin: PA4<Analog>,
-        writer: FlashWriter<'flash>,
     ) -> Self {
-        initialize_configs();
         let max_pwm_duty = timer2.get_max_duty();
 
         let mut controller = Self {
@@ -160,12 +171,9 @@ impl<'flash> Controller<'flash> {
             max_pwm_duty,
             timer2,
             timer3,
-            writer,
         };
 
         controller.setup_pwm();
-
-        if controller.load_from_flash().is_err() {}
 
         controller
     }
@@ -182,10 +190,10 @@ impl<'flash> Controller<'flash> {
         }
     }
 
-    pub fn adjust_pwm(&mut self) {
+    pub fn adjust_pwm(&mut self, configs: &Vec<Config, 8>) {
         if let Some(temp) = self.get_temperature() {
             defmt::info!("Temp: {}", temp);
-            for conf in configs() {
+            for conf in configs {
                 self.set_duty(&conf, temp);
             }
         }
@@ -199,15 +207,15 @@ impl<'flash> Controller<'flash> {
         }
     }
 
-    pub fn print(&self) {
-        configs().iter().for_each(|c| {
-            defmt::debug!("{}", c);
-        })
-    }
+    // pub fn print(&self) {
+    //     configs().iter().for_each(|c| {
+    //         debug!("{}", c);
+    //     })
+    // }
 
     fn set_duty(&mut self, conf: &Config, temp: f32) {
         if conf.enabled {
-            defmt::debug!("Setting duty for: {:#?}", conf);
+            debug!("Setting duty for: {:#?}", conf);
             let duty_percent = if temp <= conf.min_temp {
                 0.0 // stop the fan if tem is really low
             } else if temp >= conf.max_temp {
@@ -220,7 +228,7 @@ impl<'flash> Controller<'flash> {
 
             let duty_to_set = self.max_pwm_duty / 100 * duty_percent as u16;
 
-            defmt::debug!("duty {}", duty_to_set);
+            debug!("duty {}", duty_to_set);
             self.set_channel_duty(conf.id, duty_to_set)
         }
     }
@@ -231,44 +239,6 @@ impl<'flash> Controller<'flash> {
         } else {
             self.timer2.set_duty(id.get_channel(), duty)
         }
-    }
-
-    pub fn load_from_flash(&mut self) -> Result<()> {
-        if let Ok(bytes) = self.writer.read(FLASH_START_OFFSET, SZ_1K as usize)
-        {
-            for c in configs().iter_mut() {
-                let range = c.offset_range();
-                let chunk = &bytes[c.offset_range()];
-                defmt::println!("range {}; chunk: {}", range, chunk);
-                let config = from_bytes::<Config>(chunk)
-                    .map_err(|_| Error::Deserialize)?;
-
-                defmt::debug!("From memory {}", config);
-                if config.is_valid() {
-                    *c = config;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn save_to_flash(&mut self) {
-        let mut buff: Vec<u8, BUF_SIZE> = Vec::new();
-
-        configs().iter().for_each(|f| {
-            let mut ser: Vec<u8, CONFIG_SIZE> = to_vec(f).unwrap();
-            defmt::debug!("ser {}", ser.deref());
-            ser.resize_default(CONFIG_SIZE).unwrap();
-            defmt::debug!("after resize {}", ser.deref());
-
-            buff.extend(ser.into_iter());
-
-            defmt::debug!("buf {}", buff.deref());
-        });
-
-        self.writer.page_erase(FLASH_START_OFFSET).ok();
-
-        self.writer.write(FLASH_START_OFFSET, buff.deref()).ok();
     }
 }
 
@@ -288,3 +258,44 @@ fn adc_reading_to_temp(adc_reading: u16) -> f32 {
     defmt::trace!("k {}", temp_k);
     temp_k - ZERO_K_IN_C
 }
+
+// pub fn load_from_flash(
+//     &mut self,
+//     configs: &mut Vec<Config, 8>,
+// ) -> Result<()> {
+//     if let Ok(bytes) = self.writer.read(FLASH_START_OFFSET, SZ_1K as usize)
+//     {
+//         for c in configs.iter_mut() {
+//             let range = c.offset_range();
+//             let chunk = &bytes[c.offset_range()];
+//             defmt::println!("range {}; chunk: {}", range, chunk);
+//             let config = from_bytes::<Config>(chunk)
+//                 .map_err(|_| Error::Deserialize)?;
+
+//             debug!("From memory {}", config);
+//             if config.is_valid() {
+//                 *c = config;
+//             }
+//         }
+//     }
+//     Ok(())
+// }
+
+// pub fn save_to_flash(&mut self, configs: &Vec<Config, 8>) {
+//     let mut buff: Vec<u8, BUF_SIZE> = Vec::new();
+
+//     configs.iter().for_each(|f| {
+//         let mut ser: Vec<u8, CONFIG_SIZE> = to_vec(f).unwrap();
+//         debug!("ser {}", ser.deref());
+//         ser.resize_default(CONFIG_SIZE).unwrap();
+//         debug!("after resize {}", ser.deref());
+
+//         buff.extend(ser.into_iter());
+
+//         debug!("buf {}", buff.deref());
+//     });
+
+//     self.writer.page_erase(FLASH_START_OFFSET).ok();
+
+//     self.writer.write(FLASH_START_OFFSET, buff.deref()).ok();
+// }
