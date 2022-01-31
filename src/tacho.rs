@@ -1,4 +1,3 @@
-use cortex_m::asm::delay;
 use stm32f1xx_hal::{
     gpio::{gpiob::PB15, Output, PushPull},
     pwm_input::ReadMode,

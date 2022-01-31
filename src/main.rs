@@ -1,7 +1,3 @@
-//! Testing PWM output for pre-defined pin combination: all pins for default
-//! mapping
-
-// #![deny(unsafe_code)]
 #![no_main]
 #![no_std]
 
@@ -46,9 +42,7 @@ mod app {
     };
     use stm32f1xx_hal::{
         adc::Adc,
-        device::Peripherals,
         flash::{FlashSize, SectorSize},
-        pac,
         prelude::*,
         timer::{Tim2NoRemap, Tim3NoRemap, Timer},
     };

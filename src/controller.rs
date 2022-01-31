@@ -1,24 +1,20 @@
-use core::{
-    mem::size_of,
-    ops::{Deref, Range},
-};
+use core::{mem::size_of, ops::Range};
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, Format};
 use embedded_hal::Pwm;
 use heapless::Vec;
 use micromath::F32Ext;
-use postcard::{from_bytes, to_vec};
+// use postcard::{from_bytes, to_vec};
 use serde::{Deserialize, Serialize};
 use stm32f1xx_hal::{
     adc::Adc,
-    flash::{FlashWriter, SZ_1K},
     gpio::{gpioa::PA4, Analog},
     pac::ADC1,
     pwm::Channel,
 };
 
-use crate::{Error, PwmTimer2, PwmTimer3, Result};
+use crate::{PwmTimer2, PwmTimer3};
 
 pub const MAX_DUTY_PERCENT: f32 = 100.0;
 pub const MIN_DUTY_PERCENT: f32 = 10.0; // 10% usually when a pwm fan starts to spin
@@ -45,8 +41,6 @@ pub const MAX_DUTY_PWM: u16 = 2000;
 pub const NO_OF_FANS: usize = 8;
 pub const CONFIG_SIZE: usize = size_of::<Config>();
 pub const BUF_SIZE: usize = CONFIG_SIZE * NO_OF_FANS;
-
-static mut CONFIGS: Option<Vec<Config, NO_OF_FANS>> = None;
 
 #[derive(Copy, Clone, Format, Deserialize, Serialize)]
 pub struct Config {
@@ -113,26 +107,6 @@ impl Config {
         start..end
     }
 }
-
-// fn configs() -> &'static mut [Config] {
-//     unsafe { CONFIGS.as_deref_mut().unwrap() }
-// }
-
-// fn initialize_configs() {
-//     let mut configs: Vec<Config, 8> = Vec::new();
-//     configs.push(Config::new(FanId::F0)).ok();
-//     configs.push(Config::new(FanId::F1)).ok();
-//     configs.push(Config::new(FanId::F2)).ok();
-//     configs.push(Config::new(FanId::F3)).ok();
-//     configs.push(Config::new(FanId::F4)).ok();
-//     configs.push(Config::new(FanId::F5)).ok();
-//     configs.push(Config::new(FanId::F6)).ok();
-//     configs.push(Config::new(FanId::F7)).ok();
-
-//     unsafe {
-//         CONFIGS = Some(configs);
-//     }
-// }
 
 pub fn default_configs() -> Vec<Config, 8> {
     let mut configs: Vec<Config, 8> = Vec::new();
@@ -258,44 +232,3 @@ fn adc_reading_to_temp(adc_reading: u16) -> f32 {
     defmt::trace!("k {}", temp_k);
     temp_k - ZERO_K_IN_C
 }
-
-// pub fn load_from_flash(
-//     &mut self,
-//     configs: &mut Vec<Config, 8>,
-// ) -> Result<()> {
-//     if let Ok(bytes) = self.writer.read(FLASH_START_OFFSET, SZ_1K as usize)
-//     {
-//         for c in configs.iter_mut() {
-//             let range = c.offset_range();
-//             let chunk = &bytes[c.offset_range()];
-//             defmt::println!("range {}; chunk: {}", range, chunk);
-//             let config = from_bytes::<Config>(chunk)
-//                 .map_err(|_| Error::Deserialize)?;
-
-//             debug!("From memory {}", config);
-//             if config.is_valid() {
-//                 *c = config;
-//             }
-//         }
-//     }
-//     Ok(())
-// }
-
-// pub fn save_to_flash(&mut self, configs: &Vec<Config, 8>) {
-//     let mut buff: Vec<u8, BUF_SIZE> = Vec::new();
-
-//     configs.iter().for_each(|f| {
-//         let mut ser: Vec<u8, CONFIG_SIZE> = to_vec(f).unwrap();
-//         debug!("ser {}", ser.deref());
-//         ser.resize_default(CONFIG_SIZE).unwrap();
-//         debug!("after resize {}", ser.deref());
-
-//         buff.extend(ser.into_iter());
-
-//         debug!("buf {}", buff.deref());
-//     });
-
-//     self.writer.page_erase(FLASH_START_OFFSET).ok();
-
-//     self.writer.write(FLASH_START_OFFSET, buff.deref()).ok();
-// }
