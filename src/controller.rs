@@ -1,7 +1,7 @@
 use core::{mem::size_of, ops::Range};
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
-use defmt::{debug, Format};
+use defmt::{trace, Format};
 use embedded_hal::Pwm;
 use heapless::Vec;
 use micromath::F32Ext;
@@ -52,7 +52,7 @@ pub struct Config {
     max_temp: f32,
 }
 
-#[derive(Format, Copy, Clone, Deserialize, Serialize)]
+#[derive(Format, Copy, Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum FanId {
     F0 = 0,
     F1 = 1,
@@ -78,6 +78,20 @@ impl FanId {
             F5 => C3,
             F6 => C2,
             F7 => C1,
+        }
+    }
+
+    pub fn next_id(&self) -> Self {
+        use FanId::*;
+        match self {
+            F7 => F0,
+            F0 => F1,
+            F1 => F2,
+            F2 => F3,
+            F3 => F4,
+            F4 => F5,
+            F5 => F6,
+            F6 => F7,
         }
     }
 }
@@ -120,6 +134,19 @@ pub fn default_configs() -> Vec<Config, 8> {
     configs.push(Config::new(FanId::F7)).ok();
 
     configs
+}
+
+pub fn default_rpm() -> Vec<u32, 8> {
+    let mut rpms: Vec<u32, 8> = Vec::new();
+    rpms.push(0).ok();
+    rpms.push(0).ok();
+    rpms.push(0).ok();
+    rpms.push(0).ok();
+    rpms.push(0).ok();
+    rpms.push(0).ok();
+    rpms.push(0).ok();
+    rpms.push(0).ok();
+    rpms
 }
 
 pub struct Controller {
@@ -189,7 +216,7 @@ impl Controller {
 
     fn set_duty(&mut self, conf: &Config, temp: f32) {
         if conf.enabled {
-            debug!("Setting duty for: {:#?}", conf);
+            // debug!("Setting duty for: {:#?}", conf);
             let duty_percent = if temp <= conf.min_temp {
                 0.0 // stop the fan if tem is really low
             } else if temp >= conf.max_temp {
@@ -202,7 +229,7 @@ impl Controller {
 
             let duty_to_set = self.max_pwm_duty / 100 * duty_percent as u16;
 
-            debug!("duty {}", duty_to_set);
+            trace!("duty {}", duty_to_set);
             self.set_channel_duty(conf.id, duty_to_set)
         }
     }
@@ -218,17 +245,17 @@ impl Controller {
 
 fn adc_reading_to_temp(adc_reading: u16) -> f32 {
     let v_out: f32 = adc_reading as f32 * V_SUPPLY / ADC_RESOLUTION;
-    defmt::trace!("v_out {}", v_out);
-    defmt::trace!("adc_reading: {}", adc_reading);
+    trace!("v_out {}", v_out);
+    trace!("adc_reading: {}", adc_reading);
 
     let r_ntc = (v_out * R_10K) / (V_SUPPLY - v_out);
-    defmt::trace!("rt {}", r_ntc);
+    trace!("rt {}", r_ntc);
 
     let t_25_c_in_k = ZERO_K_IN_C + 25.0;
 
     let temp_k = (t_25_c_in_k * B_PARAM)
         / (t_25_c_in_k * (r_ntc / R_10K).ln() + B_PARAM);
 
-    defmt::trace!("k {}", temp_k);
+    trace!("k {}", temp_k);
     temp_k - ZERO_K_IN_C
 }

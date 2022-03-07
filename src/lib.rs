@@ -2,6 +2,7 @@
 
 pub mod controller;
 pub mod tacho;
+use core::ops::Deref;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 
@@ -20,6 +21,14 @@ use stm32f1xx_hal::{
     pwm_input::PwmInput,
     timer::{Tim2NoRemap, Tim3NoRemap, Tim4NoRemap},
 };
+
+use controller::{
+    default_configs, Config, BUF_SIZE, CONFIG_SIZE, FLASH_START_OFFSET,
+};
+use defmt::debug;
+use heapless::Vec;
+use postcard::{from_bytes, to_vec};
+use stm32f1xx_hal::flash::{FlashWriter, SZ_1K};
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is
@@ -96,49 +105,101 @@ impl MuxController {
         Self { s0, s1, s2 }
     }
 
-    pub fn enable(&mut self, input: FanId) {
+    pub fn switch(&mut self, input: FanId) {
         use FanId::*;
         match input {
-            F0 => {
+            F7 => {
+                // I0
+                self.s2.set_low();
+                self.s1.set_low();
                 self.s0.set_low();
-                self.s1.set_low();
-                self.s2.set_low();
-            }
-            F1 => {
-                self.s0.set_high();
-                self.s1.set_low();
-                self.s2.set_low();
-            }
-            F2 => {
-                self.s0.set_low();
-                self.s1.set_high();
-                self.s2.set_low();
-            }
-            F3 => {
-                self.s0.set_high();
-                self.s1.set_high();
-                self.s2.set_low();
-            }
-            F4 => {
-                self.s0.set_low();
-                self.s1.set_low();
-                self.s2.set_high();
-            }
-            F5 => {
-                self.s0.set_high();
-                self.s1.set_low();
-                self.s2.set_high();
             }
             F6 => {
-                self.s0.set_low();
-                self.s1.set_high();
-                self.s2.set_high();
-            }
-            F7 => {
+                // I1
+                self.s2.set_low();
+                self.s1.set_low();
                 self.s0.set_high();
+            }
+            F5 => {
+                // I2
+                self.s2.set_low();
                 self.s1.set_high();
+                self.s0.set_low();
+            }
+            F4 => {
+                // I3
+                self.s2.set_low();
+                self.s1.set_high();
+                self.s0.set_high();
+            }
+            F3 => {
+                // I4
                 self.s2.set_high();
+                self.s1.set_low();
+                self.s0.set_low();
+            }
+            F2 => {
+                // I5
+                self.s2.set_high();
+                self.s1.set_low();
+                self.s0.set_high();
+            }
+            F1 => {
+                // I6
+                self.s2.set_high();
+                self.s1.set_high();
+                self.s0.set_low();
+            }
+            F0 => {
+                // I7
+                self.s2.set_high();
+                self.s1.set_high();
+                self.s0.set_high();
             }
         };
     }
+}
+
+pub fn load_config_from_flash(writer: &FlashWriter) -> Vec<Config, 8> {
+    let mut configs = default_configs();
+
+    let bytes = match writer.read(FLASH_START_OFFSET, SZ_1K as usize) {
+        Ok(it) => it,
+        _ => return configs,
+    };
+    for c in configs.iter_mut() {
+        let range = c.offset_range();
+        let chunk = &bytes[c.offset_range()];
+        debug!("range {}; chunk: {}", range, chunk);
+        if let Ok(config) = from_bytes::<Config>(chunk) {
+            debug!("From memory {}", config);
+            if config.is_valid() {
+                *c = config;
+            }
+        }
+    }
+
+    configs
+}
+
+pub fn save_config_to_flash(
+    writer: &mut FlashWriter,
+    configs: &Vec<Config, 8>,
+) {
+    let mut buff: Vec<u8, BUF_SIZE> = Vec::new();
+
+    configs.iter().for_each(|f| {
+        let mut ser: Vec<u8, CONFIG_SIZE> = to_vec(f).unwrap();
+        debug!("ser {}", ser.deref());
+        ser.resize_default(CONFIG_SIZE).unwrap();
+        debug!("after resize {}", ser.deref());
+
+        buff.extend(ser.into_iter());
+
+        debug!("buf {}", buff.deref());
+    });
+
+    writer.page_erase(FLASH_START_OFFSET).ok();
+
+    writer.write(FLASH_START_OFFSET, buff.deref()).ok();
 }
