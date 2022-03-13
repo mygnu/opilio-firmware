@@ -14,7 +14,7 @@ use stm32f1xx_hal::{
     pwm::Channel,
 };
 
-use crate::{PwmTimer2, PwmTimer3};
+use crate::{Configs, PwmTimer2, PwmTimer3};
 
 pub const MAX_DUTY_PERCENT: f32 = 100.0;
 pub const MIN_DUTY_PERCENT: f32 = 10.0; // 10% usually when a pwm fan starts to spin
@@ -44,7 +44,7 @@ pub const BUF_SIZE: usize = CONFIG_SIZE * NO_OF_FANS;
 
 #[derive(Copy, Clone, Format, Deserialize, Serialize)]
 pub struct Config {
-    id: FanId,
+    pub id: FanId,
     enabled: bool,
     min_duty: f32,
     max_duty: f32,
@@ -97,7 +97,7 @@ impl FanId {
 }
 
 impl Config {
-    fn new(id: FanId) -> Self {
+    pub fn new(id: FanId) -> Self {
         Self {
             id,
             enabled: true,
@@ -120,20 +120,6 @@ impl Config {
         let end = start + CONFIG_SIZE;
         start..end
     }
-}
-
-pub fn default_configs() -> Vec<Config, 8> {
-    let mut configs: Vec<Config, 8> = Vec::new();
-    configs.push(Config::new(FanId::F0)).ok();
-    configs.push(Config::new(FanId::F1)).ok();
-    configs.push(Config::new(FanId::F2)).ok();
-    configs.push(Config::new(FanId::F3)).ok();
-    configs.push(Config::new(FanId::F4)).ok();
-    configs.push(Config::new(FanId::F5)).ok();
-    configs.push(Config::new(FanId::F6)).ok();
-    configs.push(Config::new(FanId::F7)).ok();
-
-    configs
 }
 
 pub fn default_rpm() -> Vec<u32, 8> {
@@ -191,10 +177,10 @@ impl Controller {
         }
     }
 
-    pub fn adjust_pwm(&mut self, configs: &Vec<Config, 8>) {
+    pub fn adjust_pwm(&mut self, configs: &Configs) {
         if let Some(temp) = self.get_temperature() {
             defmt::info!("Temp: {}", temp);
-            for conf in configs {
+            for conf in configs.as_ref() {
                 self.set_duty(&conf, temp);
             }
         }

@@ -1,27 +1,22 @@
 #![no_main]
 #![no_std]
 
-use defmt::debug;
-
 #[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [RTC], peripherals = true)]
 mod app {
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
     use heapless::Vec;
     use opilio::{
-        controller::{default_rpm, Config, Controller, FanId, NO_OF_FANS},
+        controller::{default_rpm, Controller, FanId},
         tacho::TachoReader,
-        MuxController, PwmInputTimer, PwmTimer2, PwmTimer3,
+        Configs, MuxController, PwmInputTimer, PwmTimer2, PwmTimer3,
     };
     use stm32f1xx_hal::{
         adc::Adc,
-        flash::{FlashSize, SectorSize},
+        flash::Parts,
         prelude::*,
         pwm_input::Configuration,
         timer::{Tim2NoRemap, Tim3NoRemap, Timer},
-    };
-    use stm32f1xx_hal::{
-        flash::Parts,
         usb::{Peripheral, UsbBus, UsbBusType},
     };
     use systick_monotonic::*;
@@ -34,7 +29,7 @@ mod app {
     struct Shared {
         usb_dev: UsbDevice<'static, UsbBusType>,
         serial: usbd_serial::SerialPort<'static, UsbBusType>,
-        configs: Vec<Config, NO_OF_FANS>,
+        configs: Configs,
         flash: Parts,
         rpm: Vec<u32, 8>,
         controller: Controller,
@@ -76,7 +71,7 @@ mod app {
         // will not reset your device when you upload new firmware.
         let mut usb_dp = gpioa.pa12.into_push_pull_output(&mut gpioa.crh);
         usb_dp.set_low();
-        delay(clocks.sysclk().0 / 100);
+        delay(clocks.sysclk().0);
 
         let usb_dm = gpioa.pa11;
         let usb_dp = usb_dp.into_floating_input(&mut gpioa.crh);
@@ -107,12 +102,10 @@ mod app {
         // Initialize the monotonic (SysTick rate is 48 MHz)
         let mono = Systick::new(cx.core.SYST, 48_000_000);
 
-        let writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
-        let configs = opilio::load_config_from_flash(&writer);
+        let configs = Configs::from_flash(&mut flash);
 
         // Configure pa4 as an analog input
         let thermistor_pin = gpioa.pa4.into_analog(&mut gpioa.crl);
-        // let writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
 
         let pins_a0_a3 = (
             gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl),
@@ -214,51 +207,37 @@ mod app {
         rpm::spawn_after(1.secs(), next_id).unwrap();
     }
 
-    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial])]
+    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, configs, flash])]
     fn usb_tx(cx: usb_tx::Context) {
         debug!("usb tx");
         let mut usb_dev = cx.shared.usb_dev;
         let mut serial = cx.shared.serial;
+        let mut configs = cx.shared.configs;
+        let mut flash = cx.shared.flash;
 
-        (&mut usb_dev, &mut serial).lock(|usb_dev, serial| {
-            super::usb_poll(usb_dev, serial);
-        });
+        (&mut usb_dev, &mut serial, &mut configs, &mut flash).lock(
+            |usb_dev, serial, configs, flash| {
+                opilio::serial_handler::usb_poll(
+                    usb_dev, serial, configs, flash,
+                );
+            },
+        );
     }
 
-    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial])]
+    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, configs, flash])]
     fn usb_rx0(cx: usb_rx0::Context) {
         // debug!("usb rx");
         let mut usb_dev = cx.shared.usb_dev;
         let mut serial = cx.shared.serial;
+        let mut configs = cx.shared.configs;
+        let mut flash = cx.shared.flash;
 
-        (&mut usb_dev, &mut serial).lock(|usb_dev, serial| {
-            super::usb_poll(usb_dev, serial);
-        });
-    }
-}
-
-fn usb_poll<B: usb_device::bus::UsbBus>(
-    usb_dev: &mut usb_device::prelude::UsbDevice<'static, B>,
-    serial: &mut usbd_serial::SerialPort<'static, B>,
-) {
-    if !usb_dev.poll(&mut [serial]) {
-        return;
-    }
-
-    let mut buf = [0u8; 8];
-
-    match serial.read(&mut buf) {
-        Ok(count) if count > 0 => {
-            debug!("{:?}", buf);
-            // Echo back in upper case
-            for c in buf[0..count].iter_mut() {
-                if 0x61 <= *c && *c <= 0x7a {
-                    *c &= !0x20;
-                }
-            }
-
-            serial.write(&buf[0..count]).ok();
-        }
-        _ => {}
+        (&mut usb_dev, &mut serial, &mut configs, &mut flash).lock(
+            |usb_dev, serial, configs, flash| {
+                opilio::serial_handler::usb_poll(
+                    usb_dev, serial, configs, flash,
+                );
+            },
+        );
     }
 }
