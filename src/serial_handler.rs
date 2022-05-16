@@ -67,6 +67,7 @@ enum Command {
     GetConfig = 2,
     SaveConfig = 3,
     GetTemp = 10,
+    GetRpm = 11,
 }
 
 #[derive(Serialize, Deserialize)]
