@@ -1,8 +1,8 @@
-use cortex_m::asm::delay;
+// use cortex_m::asm::delay;
 use stm32f1xx_hal::{
     gpio::{gpiob::PB15, Output, PushPull},
-    pwm_input::ReadMode,
     rcc::Clocks,
+    timer::ReadMode,
 };
 
 use crate::{controller::FanId, MuxController, PwmInputTimer};
@@ -37,12 +37,12 @@ impl TachoReader {
     pub fn read_rpm(&mut self, fan_id: FanId) -> u32 {
         defmt::info!("Reading {}", fan_id);
 
-        delay(self.clocks.sysclk().0 / 3);
+        // delay(self.clocks.sysclk() / 3);
         if let Ok(freq) = self
             .pwm_input_timer
             .read_frequency(ReadMode::Instant, &self.clocks)
         {
-            freq.0 * 30
+            freq.raw() * 30
         } else {
             0
         }

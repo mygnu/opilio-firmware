@@ -23,9 +23,10 @@ use stm32f1xx_hal::{
         Alternate, Floating, Input, Output, PushPull,
     },
     pac,
-    pwm::{self, Pwm},
-    pwm_input::PwmInput,
-    timer::{Tim2NoRemap, Tim3NoRemap, Tim4NoRemap},
+    timer::{
+        Ch, PwmHz, PwmInput, Tim2NoRemap, Tim3NoRemap, Tim4NoRemap, C1, C2, C3,
+        C4,
+    },
 };
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
@@ -64,10 +65,10 @@ pub type PwmInputTimer = PwmInput<
     (PB6<Input<Floating>>, PB7<Input<Floating>>),
 >;
 
-pub type PwmTimer2 = Pwm<
+pub type PwmTimer2 = PwmHz<
     pac::TIM2,
     Tim2NoRemap,
-    (pwm::C1, pwm::C2, pwm::C3, pwm::C4),
+    (Ch<C1>, Ch<C2>, Ch<C3>, Ch<C4>),
     (
         PA0<Alternate<PushPull>>,
         PA1<Alternate<PushPull>>,
@@ -76,10 +77,10 @@ pub type PwmTimer2 = Pwm<
     ),
 >;
 
-pub type PwmTimer3 = Pwm<
+pub type PwmTimer3 = PwmHz<
     pac::TIM3,
     Tim3NoRemap,
-    (pwm::C1, pwm::C2, pwm::C3, pwm::C4),
+    (Ch<C1>, Ch<C2>, Ch<C3>, Ch<C4>),
     (
         PA6<Alternate<PushPull>>,
         PA7<Alternate<PushPull>>,

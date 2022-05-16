@@ -2,7 +2,6 @@ use core::{mem::size_of, ops::Range};
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{trace, Format};
-use embedded_hal::Pwm;
 use heapless::Vec;
 use micromath::F32Ext;
 // use postcard::{from_bytes, to_vec};
@@ -11,7 +10,7 @@ use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog},
     pac::ADC1,
-    pwm::Channel,
+    timer::Channel,
 };
 
 use crate::{Configs, PwmTimer2, PwmTimer3};
@@ -166,9 +165,8 @@ impl Controller {
     }
 
     fn setup_pwm(&mut self) {
-        use Channel::*;
         let min_duty = self.max_pwm_duty * 10 / 100;
-
+        use Channel::*;
         for channel in [C1, C2, C3, C4] {
             self.timer2.enable(channel);
             self.timer3.enable(channel);

@@ -13,13 +13,12 @@ mod app {
     };
     use stm32f1xx_hal::{
         adc::Adc,
-        flash::Parts,
+        flash::{FlashExt, Parts},
         prelude::*,
-        pwm_input::Configuration,
-        timer::{Tim2NoRemap, Tim3NoRemap, Timer},
+        timer::{pwm_input::Configuration, Tim2NoRemap, Tim3NoRemap, Timer},
         usb::{Peripheral, UsbBus, UsbBusType},
     };
-    use systick_monotonic::*;
+    use systick_monotonic::{ExtU64, Systick};
     use usb_device::prelude::*;
 
     #[monotonic(binds = SysTick, default = true)]
@@ -51,10 +50,10 @@ mod app {
 
         let clocks = rcc
             .cfgr
-            .adcclk(8.mhz())
-            .use_hse(8.mhz())
-            .sysclk(48.mhz())
-            .pclk1(24.mhz())
+            .adcclk(8.MHz())
+            .use_hse(8.MHz())
+            .sysclk(48.MHz())
+            .pclk1(24.MHz())
             .freeze(&mut flash.acr);
 
         assert!(clocks.usbclk_valid());
@@ -71,7 +70,7 @@ mod app {
         // will not reset your device when you upload new firmware.
         let mut usb_dp = gpioa.pa12.into_push_pull_output(&mut gpioa.crh);
         usb_dp.set_low();
-        delay(clocks.sysclk().0);
+        delay(clocks.sysclk().raw());
 
         let usb_dm = gpioa.pa11;
         let usb_dp = usb_dp.into_floating_input(&mut gpioa.crh);
@@ -113,11 +112,11 @@ mod app {
             gpioa.pa2.into_alternate_push_pull(&mut gpioa.crl),
             gpioa.pa3.into_alternate_push_pull(&mut gpioa.crl),
         );
-        let pwm_timer2: PwmTimer2 = Timer::tim2(device.TIM2, &clocks)
-            .pwm::<Tim2NoRemap, _, _, _>(
+        let pwm_timer2: PwmTimer2 = device.TIM2.pwm_hz::<Tim2NoRemap, _, _>(
             pins_a0_a3,
             &mut afio.mapr,
-            24.khz(),
+            24.kHz(),
+            &clocks,
         );
 
         let pins_a6_a9_b0_b1 = (
@@ -126,11 +125,11 @@ mod app {
             gpiob.pb0.into_alternate_push_pull(&mut gpiob.crl),
             gpiob.pb1.into_alternate_push_pull(&mut gpiob.crl),
         );
-        let pwm_timer3: PwmTimer3 = Timer::tim3(device.TIM3, &clocks)
-            .pwm::<Tim3NoRemap, _, _, _>(
+        let pwm_timer3: PwmTimer3 = device.TIM3.pwm_hz::<Tim3NoRemap, _, _>(
             pins_a6_a9_b0_b1,
             &mut afio.mapr,
-            24.khz(),
+            24.kHz(),
+            &clocks,
         );
         let controller =
             Controller::new(pwm_timer2, pwm_timer3, adc1, thermistor_pin);
@@ -147,12 +146,12 @@ mod app {
             gpiob.pb7.into_floating_input(&mut gpiob.crl),
         );
         let mut dbg = device.DBGMCU;
-        let pwm_input_timer: PwmInputTimer = Timer::tim4(device.TIM4, &clocks)
+        let pwm_input_timer: PwmInputTimer = Timer::new(device.TIM4, &clocks)
             .pwm_input(
                 pwm_input_pins,
                 &mut afio.mapr,
                 &mut dbg,
-                Configuration::Frequency(1.hz()),
+                Configuration::Frequency(1.Hz()),
             );
 
         let tacho = TachoReader::new(pwm_input_timer, mux, clocks, pb15);
@@ -186,7 +185,7 @@ mod app {
         );
 
         // Periodic ever 1 seconds
-        tick::spawn_after(1.secs()).unwrap();
+        tick::spawn_after(ExtU64::secs(1)).unwrap();
     }
 
     #[task( shared = [controller, rpm, tacho])]
@@ -204,7 +203,7 @@ mod app {
         });
 
         // Periodic ever 1 seconds
-        rpm::spawn_after(1.secs(), next_id).unwrap();
+        rpm::spawn_after(ExtU64::secs(1), next_id).unwrap();
     }
 
     #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, configs, flash])]
