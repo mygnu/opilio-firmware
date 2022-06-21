@@ -137,23 +137,11 @@ mod app {
             &clocks,
         );
 
-        // let pins_a6_a9_b0_b1 = (
-        //     gpioa.pa6.into_alternate_push_pull(&mut gpioa.crl),
-        //     gpioa.pa7.into_alternate_push_pull(&mut gpioa.crl),
-        //     gpiob.pb0.into_alternate_push_pull(&mut gpiob.crl),
-        //     gpiob.pb1.into_alternate_push_pull(&mut gpiob.crl),
-        // );
-        // let pwm_timer3: PwmTimer3 = device.TIM3.pwm_hz::<Tim3NoRemap, _, _>(
-        //     pins_a6_a9_b0_b1,
-        //     &mut afio.mapr,
-        //     24.kHz(),
-        //     &clocks,
-        // );
-
         let fan_enable = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
         let pump_enable = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
         let red_led = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
         let blue_led = gpiob.pb15.into_push_pull_output(&mut gpiob.crh);
+
         let controller = Controller::new(
             pwm_timer2,
             adc1,
@@ -169,7 +157,6 @@ mod app {
         let tacho = TachoReader::default();
 
         periodic::spawn().unwrap();
-        // rpm::spawn(FanId::F1).unwrap();
 
         (
             Shared {
@@ -204,35 +191,6 @@ mod app {
         // Periodic ever 1 seconds
         periodic::spawn_after(ExtU64::secs(1)).unwrap();
     }
-
-    // #[task( shared = [controller, tacho])]
-    // fn rpm(mut cx: rpm::Context, fan_id: FanId) {
-    //     cx.shared.tacho.lock(|t| {
-    //         let freq1 = t.rpm(FanId::F1);
-    //         let freq2 = t.rpm(FanId::F2);
-    //         let freq3 = t.rpm(FanId::F3);
-    //         let freq4 = t.rpm(FanId::F4);
-
-    //         // println!("reading rpm {}", t);
-    //         println!("{}, {}, {}, {}", freq1, freq2, freq3, freq4);
-    //     });
-
-    //     // let mut tacho = cx.shared.tacho;
-    //     // let mut rpml = cx.shared.rpm;
-    //     let next_id = fan_id.iter().next().unwrap_or(FanId::F1);
-
-    //     // (&mut tacho, &mut rpml).lock(|t, _r| {
-    //     //     // r[fan_id as usize] = t.read_rpm(fan_id);
-    //     //     // t.next_reading(next_id);
-    //     //     // debug!("{:?}", r.iter());
-
-    //     //     let rpm = t.read_rpm(FanId::F0);
-    //     //     debug!("{}", rpm);
-    //     // });
-
-    //     // Periodic ever 1 seconds
-    //     rpm::spawn_after(ExtU64::secs(1), next_id).unwrap();
-    // }
 
     #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, configs, flash])]
     fn usb_tx(cx: usb_tx::Context) {
