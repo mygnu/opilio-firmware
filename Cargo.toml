@@ -26,8 +26,8 @@ stm32f1xx-hal = { version = "0.9", features = [
     "medium",
     "stm32-usbd",
 ] }
-usb-device = "0.2.3"
-usbd-serial = "0.1.0"
+usb-device = "0.2"
+usbd-serial = "0.1"
 
 
 # cargo build/run
@@ -43,6 +43,7 @@ overflow-checks = true
 
 # cargo build/run --release
 [profile.release]
+# strip = true
 codegen-units = 1
 debug = 2
 debug-assertions = false

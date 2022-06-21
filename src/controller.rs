@@ -1,19 +1,19 @@
 use core::{mem::size_of, ops::Range};
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
-use defmt::{trace, Format};
+use defmt::{debug, trace, Format};
 use heapless::Vec;
 use micromath::F32Ext;
 // use postcard::{from_bytes, to_vec};
 use serde::{Deserialize, Serialize};
 use stm32f1xx_hal::{
     adc::Adc,
-    gpio::{gpioa::PA4, Analog},
+    gpio::{gpioa::PA4, Analog, Output, PushPull, PB12, PB13, PB14, PB15},
     pac::ADC1,
     timer::Channel,
 };
 
-use crate::{Configs, PwmTimer2, PwmTimer3};
+use crate::{Configs, PwmTimer2};
 
 pub const MAX_DUTY_PERCENT: f32 = 100.0;
 pub const MIN_DUTY_PERCENT: f32 = 10.0; // 10% usually when a pwm fan starts to spin
@@ -53,44 +53,22 @@ pub struct Config {
 
 #[derive(Format, Copy, Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub enum FanId {
-    F0 = 0,
     F1 = 1,
     F2 = 2,
     F3 = 3,
     F4 = 4,
-    F5 = 5,
-    F6 = 6,
-    F7 = 7,
 }
 
 impl FanId {
-    pub fn get_channel(&self) -> Channel {
+    pub fn channel(&self) -> Channel {
         use Channel::*;
         use FanId::*;
 
         match self {
-            F0 => C4,
-            F1 => C3,
-            F2 => C2,
-            F3 => C1,
-            F4 => C4,
-            F5 => C3,
-            F6 => C2,
-            F7 => C1,
-        }
-    }
-
-    pub fn next_id(&self) -> Self {
-        use FanId::*;
-        match self {
-            F7 => F0,
-            F0 => F1,
-            F1 => F2,
-            F2 => F3,
-            F3 => F4,
-            F4 => F5,
-            F5 => F6,
-            F6 => F7,
+            F1 => C4,
+            F2 => C3,
+            F3 => C2,
+            F4 => C1,
         }
     }
 }
@@ -136,18 +114,24 @@ pub fn default_rpm() -> Vec<u32, 8> {
 
 pub struct Controller {
     adc: Adc<ADC1>,
-    thermistor_pin: PA4<Analog>,
-    timer2: PwmTimer2,
-    timer3: PwmTimer3,
     max_pwm_duty: u16,
+    fan_enable: PB12<Output<PushPull>>,
+    pump_enable: PB13<Output<PushPull>>,
+    red_led: PB14<Output<PushPull>>,
+    blue_led: PB15<Output<PushPull>>,
+    pwm_timer: PwmTimer2,
+    thermistor_pin: PA4<Analog>,
 }
 
 impl Controller {
     pub fn new(
         timer2: PwmTimer2,
-        timer3: PwmTimer3,
         adc: Adc<ADC1>,
         thermistor_pin: PA4<Analog>,
+        fan_enable: PB12<Output<PushPull>>,
+        pump_enable: PB13<Output<PushPull>>,
+        red_led: PB14<Output<PushPull>>,
+        blue_led: PB15<Output<PushPull>>,
     ) -> Self {
         let max_pwm_duty = timer2.get_max_duty();
 
@@ -155,8 +139,11 @@ impl Controller {
             thermistor_pin,
             adc,
             max_pwm_duty,
-            timer2,
-            timer3,
+            pwm_timer: timer2,
+            fan_enable,
+            pump_enable,
+            red_led,
+            blue_led,
         };
 
         controller.setup_pwm();
@@ -164,31 +151,37 @@ impl Controller {
         controller
     }
 
+    pub fn standby_mode(&mut self) {
+        debug!("turning off");
+        self.fan_enable.set_low();
+        self.pump_enable.set_low();
+        self.blue_led.set_high();
+    }
+
     fn setup_pwm(&mut self) {
         let min_duty = self.max_pwm_duty * 10 / 100;
         use Channel::*;
         for channel in [C1, C2, C3, C4] {
-            self.timer2.enable(channel);
-            self.timer3.enable(channel);
-            self.timer2.set_duty(channel, min_duty);
-            self.timer3.set_duty(channel, min_duty);
+            self.pwm_timer.enable(channel);
+            self.pwm_timer.set_duty(channel, min_duty);
         }
     }
 
     pub fn adjust_pwm(&mut self, configs: &Configs) {
-        if let Some(temp) = self.get_temperature() {
-            defmt::info!("Temp: {}", temp);
-            for conf in configs.as_ref() {
-                self.set_duty(&conf, temp);
-            }
+        let temp = self.get_temperature();
+        defmt::info!("Temp: {}", temp);
+        for conf in configs.as_ref() {
+            self.set_duty(&conf, temp);
         }
     }
 
-    pub fn get_temperature(&mut self) -> Option<f32> {
+    pub fn get_temperature(&mut self) -> f32 {
         if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
-            Some(adc_reading_to_temp(adc1_reading))
+            self.red_led.set_low();
+            adc_reading_to_temp(adc1_reading)
         } else {
-            None
+            self.red_led.set_high();
+            30.0 // assume we are running hot
         }
     }
 
@@ -219,11 +212,7 @@ impl Controller {
     }
 
     fn set_channel_duty(&mut self, id: FanId, duty: u16) {
-        if id as usize <= 3 {
-            self.timer3.set_duty(id.get_channel(), duty);
-        } else {
-            self.timer2.set_duty(id.get_channel(), duty)
-        }
+        self.pwm_timer.set_duty(id.channel(), duty)
     }
 }
 

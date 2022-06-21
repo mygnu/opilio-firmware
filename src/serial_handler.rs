@@ -22,7 +22,7 @@ pub fn usb_poll<B: UsbBus>(
 
     match serial.read(&mut buf) {
         Ok(count) if count > 0 => {
-            // debug!("{:?}", buf);
+            defmt::debug!("{:?}", buf);
 
             if let Ok(command) = from_bytes::<Command>(&buf[0..1]) {
                 if command == Command::SetConfig {

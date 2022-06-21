@@ -18,15 +18,11 @@ use postcard::{from_bytes, to_vec};
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
     gpio::{
-        gpioa::{PA0, PA1, PA2, PA3, PA6, PA7},
-        gpiob::{PB0, PB1, PB12, PB13, PB14, PB6, PB7},
-        Alternate, Floating, Input, Output, PushPull,
+        gpioa::{PA0, PA1, PA2, PA3},
+        Alternate, PushPull,
     },
     pac,
-    timer::{
-        Ch, PwmHz, PwmInput, Tim2NoRemap, Tim3NoRemap, Tim4NoRemap, C1, C2, C3,
-        C4,
-    },
+    timer::{Ch, PwmHz, Tim2NoRemap, C1, C2, C3, C4},
 };
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
@@ -59,12 +55,6 @@ pub enum Error {
     Deserialize,
 }
 
-pub type PwmInputTimer = PwmInput<
-    pac::TIM4,
-    Tim4NoRemap,
-    (PB6<Input<Floating>>, PB7<Input<Floating>>),
->;
-
 pub type PwmTimer2 = PwmHz<
     pac::TIM2,
     Tim2NoRemap,
@@ -77,109 +67,24 @@ pub type PwmTimer2 = PwmHz<
     ),
 >;
 
-pub type PwmTimer3 = PwmHz<
-    pac::TIM3,
-    Tim3NoRemap,
-    (Ch<C1>, Ch<C2>, Ch<C3>, Ch<C4>),
-    (
-        PA6<Alternate<PushPull>>,
-        PA7<Alternate<PushPull>>,
-        PB0<Alternate<PushPull>>,
-        PB1<Alternate<PushPull>>,
-    ),
->;
-
-pub struct MuxController {
-    s0: PB12<Output<PushPull>>,
-    s1: PB13<Output<PushPull>>,
-    s2: PB14<Output<PushPull>>,
-}
-
-impl MuxController {
-    pub fn new(
-        s0: PB12<Output<PushPull>>,
-        s1: PB13<Output<PushPull>>,
-        s2: PB14<Output<PushPull>>,
-    ) -> Self {
-        Self { s0, s1, s2 }
-    }
-
-    pub fn switch(&mut self, input: FanId) {
-        use FanId::*;
-        match input {
-            F7 => {
-                // I0
-                self.s2.set_low();
-                self.s1.set_low();
-                self.s0.set_low();
-            }
-            F6 => {
-                // I1
-                self.s2.set_low();
-                self.s1.set_low();
-                self.s0.set_high();
-            }
-            F5 => {
-                // I2
-                self.s2.set_low();
-                self.s1.set_high();
-                self.s0.set_low();
-            }
-            F4 => {
-                // I3
-                self.s2.set_low();
-                self.s1.set_high();
-                self.s0.set_high();
-            }
-            F3 => {
-                // I4
-                self.s2.set_high();
-                self.s1.set_low();
-                self.s0.set_low();
-            }
-            F2 => {
-                // I5
-                self.s2.set_high();
-                self.s1.set_low();
-                self.s0.set_high();
-            }
-            F1 => {
-                // I6
-                self.s2.set_high();
-                self.s1.set_high();
-                self.s0.set_low();
-            }
-            F0 => {
-                // I7
-                self.s2.set_high();
-                self.s1.set_high();
-                self.s0.set_high();
-            }
-        };
-    }
-}
-
 pub struct Configs {
-    data: Vec<Config, 8>,
+    data: Vec<Config, 4>,
 }
 
 impl Default for Configs {
     fn default() -> Self {
-        let mut data: Vec<Config, 8> = Vec::new();
-        data.push(Config::new(FanId::F0)).ok();
+        let mut data: Vec<_, 4> = Vec::new();
         data.push(Config::new(FanId::F1)).ok();
         data.push(Config::new(FanId::F2)).ok();
         data.push(Config::new(FanId::F3)).ok();
         data.push(Config::new(FanId::F4)).ok();
-        data.push(Config::new(FanId::F5)).ok();
-        data.push(Config::new(FanId::F6)).ok();
-        data.push(Config::new(FanId::F7)).ok();
+
         Self { data }
     }
 }
 
-impl AsRef<Vec<Config, 8>> for Configs {
-    fn as_ref(&self) -> &Vec<Config, 8> {
+impl AsRef<Vec<Config, 4>> for Configs {
+    fn as_ref(&self) -> &Vec<Config, 4> {
         &self.data
     }
 }
@@ -225,7 +130,7 @@ impl Configs {
         self.as_ref().iter().for_each(|f| {
             let mut ser: Vec<u8, CONFIG_SIZE> = to_vec(f).unwrap();
             debug!("ser {}", ser.deref());
-            ser.resize_default(CONFIG_SIZE).unwrap();
+            ser.resize_default(CONFIG_SIZE).ok();
             debug!("after resize {}", ser.deref());
 
             buff.extend(ser.into_iter());
