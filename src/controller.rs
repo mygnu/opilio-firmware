@@ -1,8 +1,7 @@
-use core::{mem::size_of, ops::Range};
+use core::mem::size_of;
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace, Format};
-use heapless::Vec;
 use micromath::F32Ext;
 // use postcard::{from_bytes, to_vec};
 use serde::{Deserialize, Serialize};
@@ -26,7 +25,7 @@ pub const B_PARAM: f32 = 3700.0; //3200.0;
 /// 0*C in kelvin
 pub const ZERO_K_IN_C: f32 = 273.15;
 
-pub const MIN_TEMP: f32 = 20.0;
+pub const MIN_TEMP: f32 = 15.0;
 pub const MAX_TEMP: f32 = 40.0;
 // Analog to digital resolution
 pub const ADC_RESOLUTION: f32 = 4096.0;
@@ -37,9 +36,6 @@ pub const ADC_RESOLUTION: f32 = 4096.0;
 // pub const FLASH_START_OFFSET: u32 = 0x0C800;
 pub const FLASH_START_OFFSET: u32 = 0xF000;
 pub const MAX_DUTY_PWM: u16 = 2000;
-pub const NO_OF_FANS: usize = 8;
-pub const CONFIG_SIZE: usize = size_of::<Config>();
-pub const BUF_SIZE: usize = CONFIG_SIZE * NO_OF_FANS;
 
 #[derive(Copy, Clone, Format, Deserialize, Serialize)]
 pub struct Config {
@@ -91,25 +87,6 @@ impl Config {
             && self.min_temp >= MIN_TEMP
             && self.max_temp <= MAX_TEMP
     }
-
-    pub fn offset_range(&self) -> Range<usize> {
-        let start = self.id as usize * CONFIG_SIZE;
-        let end = start + CONFIG_SIZE;
-        start..end
-    }
-}
-
-pub fn default_rpm() -> Vec<u32, 8> {
-    let mut rpms: Vec<u32, 8> = Vec::new();
-    rpms.push(0).ok();
-    rpms.push(0).ok();
-    rpms.push(0).ok();
-    rpms.push(0).ok();
-    rpms.push(0).ok();
-    rpms.push(0).ok();
-    rpms.push(0).ok();
-    rpms.push(0).ok();
-    rpms
 }
 
 pub struct Controller {
@@ -148,14 +125,32 @@ impl Controller {
 
         controller.setup_pwm();
 
+        defmt::println!("Configs size {}", size_of::<Configs>());
+
         controller
     }
 
     pub fn standby_mode(&mut self) {
-        debug!("turning off");
-        self.fan_enable.set_low();
-        self.pump_enable.set_low();
-        self.blue_led.set_high();
+        if self.fan_enable.is_set_high() {
+            debug!("turning off fan and pump");
+            self.fan_enable.set_low();
+            self.pump_enable.set_low();
+        }
+
+        if self.blue_led.is_set_low() {
+            self.blue_led.set_high();
+        }
+    }
+    pub fn active_mode(&mut self) {
+        if self.fan_enable.is_set_low() {
+            debug!("enabling fan and pump");
+            self.fan_enable.set_high();
+            self.pump_enable.set_high();
+        }
+
+        if self.blue_led.is_set_high() {
+            self.blue_led.set_low();
+        }
     }
 
     fn setup_pwm(&mut self) {
@@ -184,12 +179,6 @@ impl Controller {
             30.0 // assume we are running hot
         }
     }
-
-    // pub fn print(&self) {
-    //     configs().iter().for_each(|c| {
-    //         debug!("{}", c);
-    //     })
-    // }
 
     fn set_duty(&mut self, conf: &Config, temp: f32) {
         if conf.enabled {

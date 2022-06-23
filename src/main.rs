@@ -109,6 +109,8 @@ mod app {
 
         let configs = Configs::from_flash(&mut flash);
 
+        defmt::debug!("{}", configs);
+
         // let pins_a8_a11 = (
         //     gpioa.pa8.into_alternate_push_pull(&mut gpioa.crh),
         //     gpioa.pa9.into_alternate_push_pull(&mut gpioa.crh),
@@ -179,9 +181,12 @@ mod app {
 
         (cx.shared.controller, cx.shared.configs, cx.shared.tick).lock(
             |ctl, configs, tick| {
-                if *tick > 10 {
-                    ctl.standby_mode();
+                if *tick > 120 {
+                    if !configs.persistent {
+                        ctl.standby_mode();
+                    }
                 } else {
+                    ctl.active_mode();
                     ctl.adjust_pwm(configs);
                     *tick += 1;
                 }

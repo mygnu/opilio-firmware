@@ -35,7 +35,8 @@ pub fn usb_poll<B: UsbBus>(
                 }
 
                 if command == Command::GetConfig {
-                    if let Ok(id) = from_bytes(&buf[1..]) {
+                    if let Ok(id) = from_bytes(&buf[2..]) {
+                        defmt::debug!("id {:?}", id);
                         if let Some(config) = configs.get(id) {
                             let config: Vec<u8, 32> = to_vec(&config).unwrap();
                             serial.write(&config).ok();
