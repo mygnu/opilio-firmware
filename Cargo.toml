@@ -18,7 +18,7 @@ embedded-hal = "0.2"
 heapless = { version = "0.7", features = ["defmt-impl"] }
 micromath = "2.0"
 nb = "1.0"
-postcard = "0.7"
+postcard = "1.0"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 stm32f1xx-hal = { version = "0.9", features = [
     "rt",
@@ -28,6 +28,7 @@ stm32f1xx-hal = { version = "0.9", features = [
 ] }
 usb-device = "0.2"
 usbd-serial = "0.1"
+opilio_data = { path = "../opilio/opilio_data" }
 
 
 # cargo build/run

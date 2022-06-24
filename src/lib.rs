@@ -8,14 +8,14 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use controller::{Config, FanId, FLASH_START_OFFSET};
-use defmt::{debug, Format};
+use controller::FLASH_START_OFFSET;
+
 // global logger
 use defmt_rtt as _;
-use heapless::Vec;
+
+use opilio_data::Configs;
 use panic_probe as _;
 use postcard::{from_bytes, to_vec};
-use serde::{Deserialize, Serialize};
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
     gpio::{
@@ -68,35 +68,13 @@ pub type PwmTimer2 = PwmHz<
     ),
 >;
 
-#[derive(Format, Deserialize, Serialize)]
-pub struct Configs {
-    data: Vec<Config, 4>,
-    pub persistent: bool,
+pub trait FlashOps {
+    fn from_flash(flash: &mut flash::Parts) -> Configs;
+    fn save_to_flash(&self, flash: &mut flash::Parts);
 }
 
-impl Default for Configs {
-    fn default() -> Self {
-        let mut data: Vec<_, 4> = Vec::new();
-        data.push(Config::new(FanId::F1)).ok();
-        data.push(Config::new(FanId::F2)).ok();
-        data.push(Config::new(FanId::F3)).ok();
-        data.push(Config::new(FanId::F4)).ok();
-
-        Self {
-            data,
-            persistent: true,
-        }
-    }
-}
-
-impl AsRef<Vec<Config, 4>> for Configs {
-    fn as_ref(&self) -> &Vec<Config, 4> {
-        &self.data
-    }
-}
-
-impl Configs {
-    pub fn from_flash(flash: &mut flash::Parts) -> Self {
+impl FlashOps for Configs {
+    fn from_flash(flash: &mut flash::Parts) -> Self {
         let writer = get_writer(flash);
 
         let bytes = match writer.read(FLASH_START_OFFSET, SZ_1K as usize) {
@@ -115,23 +93,8 @@ impl Configs {
         Configs::default()
     }
 
-    fn is_valid(&self) -> bool {
-        self.as_ref().iter().all(|c| c.is_valid())
-    }
-
-    pub fn set(&mut self, config: Config) {
-        for c in self.data.iter_mut() {
-            if c.id == config.id {
-                debug!("setting new config {:?}", config);
-                *c = config;
-                break;
-            }
-        }
-    }
-
-    pub fn save_to_flash(&self, flash: &mut flash::Parts) {
+    fn save_to_flash(&self, flash: &mut flash::Parts) {
         let mut writer = get_writer(flash);
-        // let mut buff: Vec<u8, BUF_SIZE> = Vec::new();
 
         if let Ok(buff) = to_vec::<Configs, 88>(&self) {
             defmt::debug!("{}", self);
@@ -141,25 +104,6 @@ impl Configs {
 
             writer.write(FLASH_START_OFFSET, buff.deref()).ok();
         }
-
-        // self.as_ref().iter().for_each(|f| {
-        //     let mut ser: Vec<u8, CONFIG_SIZE> = to_vec(f).unwrap();
-        //     debug!("ser {}", ser.deref());
-        //     ser.resize_default(CONFIG_SIZE).ok();
-        //     debug!("after resize {}", ser.deref());
-
-        //     buff.extend(ser.into_iter());
-
-        //     debug!("buf {}", buff.deref());
-        // });
-
-        // writer.page_erase(FLASH_START_OFFSET).ok();
-
-        // writer.write(FLASH_START_OFFSET, buff.deref()).ok();
-    }
-
-    pub fn get(&self, fan_id: FanId) -> Option<&Config> {
-        self.data.iter().find(|&&c| c.id == fan_id)
     }
 }
 

@@ -6,7 +6,7 @@ use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice};
 use usbd_serial::SerialPort;
 
-use crate::Configs;
+use crate::{Configs, FlashOps};
 
 pub fn usb_poll<B: UsbBus>(
     usb_dev: &mut UsbDevice<'static, B>,

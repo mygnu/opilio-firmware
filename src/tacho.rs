@@ -1,6 +1,5 @@
 use defmt::Format;
-
-use crate::controller::FanId;
+use opilio_data::{FanId, RpmData};
 
 const FANS: &[FanId] = &[FanId::F1, FanId::F2, FanId::F3, FanId::F4];
 
@@ -70,6 +69,14 @@ impl TachoReader {
             let rpm = 48_000_000.0 / (481.0 * t.elapsed_ticks as f32) * 30.0;
             t.update(15);
             rpm
+        }
+    }
+    pub fn rpm_data(&mut self) -> RpmData {
+        RpmData {
+            f1: self.rpm(FanId::F1),
+            f2: self.rpm(FanId::F2),
+            f3: self.rpm(FanId::F3),
+            f4: self.rpm(FanId::F4),
         }
     }
 }

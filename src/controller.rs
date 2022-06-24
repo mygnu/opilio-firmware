@@ -1,10 +1,8 @@
 use core::mem::size_of;
 
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
-use defmt::{debug, trace, Format};
+use defmt::{debug, trace};
 use micromath::F32Ext;
-// use postcard::{from_bytes, to_vec};
-use serde::{Deserialize, Serialize};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PB12, PB13, PB14, PB15},
@@ -12,7 +10,9 @@ use stm32f1xx_hal::{
     timer::Channel,
 };
 
-use crate::{Configs, PwmTimer2};
+use opilio_data::{Config, Configs, FanId};
+
+use crate::PwmTimer2;
 
 pub const MAX_DUTY_PERCENT: f32 = 100.0;
 pub const MIN_DUTY_PERCENT: f32 = 10.0; // 10% usually when a pwm fan starts to spin
@@ -37,26 +37,30 @@ pub const ADC_RESOLUTION: f32 = 4096.0;
 pub const FLASH_START_OFFSET: u32 = 0xF000;
 pub const MAX_DUTY_PWM: u16 = 2000;
 
-#[derive(Copy, Clone, Format, Deserialize, Serialize)]
-pub struct Config {
-    pub id: FanId,
-    enabled: bool,
-    min_duty: f32,
-    max_duty: f32,
-    min_temp: f32,
-    max_temp: f32,
+// #[derive(Copy, Clone, Format, Deserialize, Serialize)]
+// pub struct Config {
+//     pub id: FanId,
+//     enabled: bool,
+//     min_duty: f32,
+//     max_duty: f32,
+//     min_temp: f32,
+//     max_temp: f32,
+// }
+
+// #[derive(Format, Copy, Debug, Clone, Deserialize, Serialize, PartialEq)]
+// pub enum FanId {
+//     F1 = 1,
+//     F2 = 2,
+//     F3 = 3,
+//     F4 = 4,
+// }
+
+trait ChannelMap {
+    fn channel(&self) -> Channel;
 }
 
-#[derive(Format, Copy, Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub enum FanId {
-    F1 = 1,
-    F2 = 2,
-    F3 = 3,
-    F4 = 4,
-}
-
-impl FanId {
-    pub fn channel(&self) -> Channel {
+impl ChannelMap for FanId {
+    fn channel(&self) -> Channel {
         use Channel::*;
         use FanId::*;
 
@@ -66,26 +70,6 @@ impl FanId {
             F3 => C2,
             F4 => C1,
         }
-    }
-}
-
-impl Config {
-    pub fn new(id: FanId) -> Self {
-        Self {
-            id,
-            enabled: true,
-            min_duty: MIN_DUTY_PERCENT,
-            max_duty: MAX_DUTY_PERCENT,
-            min_temp: MIN_TEMP,
-            max_temp: MAX_TEMP,
-        }
-    }
-
-    pub fn is_valid(&self) -> bool {
-        self.min_duty >= MIN_DUTY_PERCENT
-            && self.max_duty <= MAX_DUTY_PERCENT
-            && self.min_temp >= MIN_TEMP
-            && self.max_temp <= MAX_TEMP
     }
 }
 

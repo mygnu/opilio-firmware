@@ -8,25 +8,28 @@ use stm32f1xx_hal::{
 };
 const PRESCALER: u16 = 480;
 
+use cortex_m::asm::delay;
+use defmt::{debug, trace};
+use opilio_data::Configs;
+use opilio_data::FanId;
+use opilio_firmware::FlashOps;
+use opilio_firmware::{
+    controller::Controller, serial_handler, tacho::TachoReader, PwmTimer2,
+};
+use stm32f1xx_hal::{
+    adc::Adc,
+    flash::{FlashExt, Parts},
+    prelude::*,
+    timer::Tim2NoRemap,
+    usb::{Peripheral, UsbBus, UsbBusType},
+};
+use systick_monotonic::{ExtU64, Systick};
+use usb_device::prelude::*;
+
 #[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [RTC], peripherals = true)]
 mod app {
-    use cortex_m::asm::delay;
-    use defmt::{debug, trace};
-    use opilio_firmware::{
-        controller::{Controller, FanId},
-        serial_handler,
-        tacho::TachoReader,
-        Configs, PwmTimer2,
-    };
-    use stm32f1xx_hal::{
-        adc::Adc,
-        flash::{FlashExt, Parts},
-        prelude::*,
-        timer::Tim2NoRemap,
-        usb::{Peripheral, UsbBus, UsbBusType},
-    };
-    use systick_monotonic::{ExtU64, Systick};
-    use usb_device::prelude::*;
+
+    use super::*;
 
     const TO_STANDBY_S: u32 = 60 * 10;
 
@@ -114,18 +117,6 @@ mod app {
 
         defmt::debug!("{}", configs);
 
-        // let pins_a8_a11 = (
-        //     gpioa.pa8.into_alternate_push_pull(&mut gpioa.crh),
-        //     gpioa.pa9.into_alternate_push_pull(&mut gpioa.crh),
-        //     gpioa.pa10.into_alternate_push_pull(&mut gpioa.crh),
-        //     // gpioa.pa11.into_alternate_push_pull(&mut gpioa.crh),
-        // );
-
-        // let tim1 =
-        //     device
-        //         .TIM1
-        //         .pwm_hz(pins_a8_a11, &mut afio.mapr, 24.kHz(), &clocks);
-
         // Configure pa4 as an analog input
         let thermistor_pin = gpioa.pa4.into_analog(&mut gpioa.crl);
 
@@ -193,6 +184,12 @@ mod app {
                 }
             },
         );
+
+        let mut tacho = cx.shared.tacho;
+
+        tacho.lock(|t| {
+            defmt::println!("{}", t.rpm_data());
+        });
 
         // Periodic ever 1 seconds
         periodic::spawn_after(ExtU64::secs(1)).unwrap();
