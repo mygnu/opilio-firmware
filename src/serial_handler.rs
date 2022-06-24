@@ -1,7 +1,6 @@
-use defmt::Format;
 use heapless::Vec;
+use opilio_data::Command;
 use postcard::{from_bytes, to_vec};
-use serde::{Deserialize, Serialize};
 use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice};
 use usbd_serial::SerialPort;
@@ -28,7 +27,8 @@ pub fn usb_poll<B: UsbBus>(
                 if command == Command::SetConfig {
                     if let Ok(new_config) = from_bytes(&buf[2..]) {
                         configs.set(new_config);
-                        let ok: Vec<u8, 3> = to_vec(&Response::Ok).unwrap();
+                        let ok: Vec<u8, 3> =
+                            to_vec(&opilio_data::Response::Ok).unwrap();
                         serial.write(&ok).ok();
                         return;
                     }
@@ -49,30 +49,10 @@ pub fn usb_poll<B: UsbBus>(
                 }
             }
 
-            let error: Vec<u8, 3> = to_vec(&Response::Error).unwrap();
+            let error: Vec<u8, 3> =
+                to_vec(&opilio_data::Response::Error).unwrap();
             serial.write(&error).ok();
         }
         _ => {}
     }
-}
-
-#[derive(Format, Serialize, Deserialize, PartialEq)]
-enum Response {
-    Ok,
-    Error,
-}
-
-#[derive(Format, Serialize, Deserialize, PartialEq)]
-enum Command {
-    SetConfig = 1,
-    GetConfig = 2,
-    SaveConfig = 3,
-    GetTemp = 10,
-    GetRpm = 11,
-}
-
-#[derive(Serialize, Deserialize)]
-struct SerialData {
-    command: Command,
-    value: Vec<u8, 32>,
 }

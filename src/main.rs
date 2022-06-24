@@ -1,35 +1,28 @@
 #![no_main]
 #![no_std]
 
-use stm32f1xx_hal::{
-    gpio::{Floating, Input, PB6, PB7, PB8, PB9},
-    pac::{Interrupt, RCC, TIM4},
-    rcc::{Enable, Reset},
-};
-const PRESCALER: u16 = 480;
-
-use cortex_m::asm::delay;
-use defmt::{debug, trace};
-use opilio_data::Configs;
-use opilio_data::FanId;
-use opilio_firmware::FlashOps;
-use opilio_firmware::{
-    controller::Controller, serial_handler, tacho::TachoReader, PwmTimer2,
-};
-use stm32f1xx_hal::{
-    adc::Adc,
-    flash::{FlashExt, Parts},
-    prelude::*,
-    timer::Tim2NoRemap,
-    usb::{Peripheral, UsbBus, UsbBusType},
-};
-use systick_monotonic::{ExtU64, Systick};
-use usb_device::prelude::*;
-
 #[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [RTC], peripherals = true)]
 mod app {
 
-    use super::*;
+    use cortex_m::asm::delay;
+    use defmt::{debug, trace};
+    use opilio_data::{Configs, FanId};
+    use opilio_firmware::{
+        controller::Controller, serial_handler, tacho::TachoReader, FlashOps,
+        PwmTimer2,
+    };
+    use stm32f1xx_hal::{
+        adc::Adc,
+        flash::{FlashExt, Parts},
+        pac::TIM4,
+        prelude::*,
+        timer::Tim2NoRemap,
+        usb::{Peripheral, UsbBus, UsbBusType},
+    };
+    use systick_monotonic::{ExtU64, Systick};
+    use usb_device::prelude::*;
+
+    use super::timer_setup::timer4_input_setup;
 
     const TO_STANDBY_S: u32 = 60 * 10;
 
@@ -148,7 +141,7 @@ mod app {
             blue_led,
         );
 
-        super::timer4_input_setup(gpiob.pb6, gpiob.pb7, gpiob.pb8, gpiob.pb9);
+        timer4_input_setup(gpiob.pb6, gpiob.pb7, gpiob.pb8, gpiob.pb9);
 
         let tacho = TachoReader::default();
 
@@ -222,7 +215,7 @@ mod app {
 
     #[task(binds = TIM4, shared = [tacho])]
     fn tim4(mut cx: tim4::Context) {
-        let tim = unsafe { &(*super::TIM4::ptr()) };
+        let tim = unsafe { &(*TIM4::ptr()) };
 
         cx.shared.tacho.lock(|t| {
             let status_register = tim.sr.read();
@@ -273,85 +266,95 @@ mod app {
     }
 }
 
-/// setup timer
-fn timer4_input_setup(
-    _pb6: PB6<Input<Floating>>,
-    _pb7: PB7<Input<Floating>>,
-    _pb8: PB8<Input<Floating>>,
-    _pb9: PB9<Input<Floating>>,
-) {
-    let tim = unsafe { &(*TIM4::ptr()) };
+mod timer_setup {
+    use stm32f1xx_hal::{
+        gpio::{Floating, Input, PB6, PB7, PB8, PB9},
+        pac::{Interrupt, RCC, TIM4},
+        rcc::{Enable, Reset},
+    };
 
-    unsafe {
-        //NOTE(unsafe) this reference will only be used for atomic writes with
-        // no side effects
-        let rcc = &(*RCC::ptr());
-        // Enable and reset the timer peripheral
-        TIM4::enable(rcc);
-        TIM4::reset(rcc);
+    pub const PRESCALER: u16 = 480;
+    /// setup timer
+    pub fn timer4_input_setup(
+        _pb6: PB6<Input<Floating>>,
+        _pb7: PB7<Input<Floating>>,
+        _pb8: PB8<Input<Floating>>,
+        _pb9: PB9<Input<Floating>>,
+    ) {
+        let tim = unsafe { &(*TIM4::ptr()) };
+
+        unsafe {
+            //NOTE(unsafe) this reference will only be used for atomic writes
+            // with no side effects
+            let rcc = &(*RCC::ptr());
+            // Enable and reset the timer peripheral
+            TIM4::enable(rcc);
+            TIM4::reset(rcc);
+        }
+
+        // PB6, PB7, PB8, PB9
+        // Disable capture on both channels during setting
+        // (for Channel X bit is CCXE)
+        tim.ccer.modify(|_, w| {
+            w.cc1e()
+                .clear_bit()
+                .cc2e()
+                .clear_bit()
+                .cc3e()
+                .clear_bit()
+                .cc4e()
+                .clear_bit()
+                .cc1p()
+                .set_bit()
+                .cc2p()
+                .set_bit()
+                .cc3p()
+                .set_bit()
+                .cc4p()
+                .set_bit()
+        });
+
+        // Define the direction of the channel (input/output)
+        // and the used input
+        tim.ccmr1_input().modify(|_, w| w.cc1s().ti1().cc2s().ti2());
+        tim.ccmr2_input().modify(|_, w| w.cc3s().ti3().cc4s().ti4());
+
+        // DMA enable interrupt register
+        tim.dier.write(|w| {
+            w.cc1ie()
+                .enabled()
+                .cc2ie()
+                .enabled()
+                .cc3ie()
+                .enabled()
+                .cc4ie()
+                .enabled()
+        });
+
+        // Configure slave mode control register
+        // Selects the trigger input to be used to synchronize the counter
+        // 101: Filtered Timer Input 1 (TI1FP1)
+        // ---------------------------------------
+        // Slave Mode Selection :
+        // Trigger Mode - The counter starts at a rising edge of the trigger
+        // TRGI (but it is not reset). Only the start of the counter is
+        // controlled.
+        tim.smcr.modify(|_, w| w.ts().ti1fp1().sms().trigger_mode());
+
+        // auto reload register
+        tim.arr.write(|w| w.arr().bits(u16::MAX));
+        tim.psc.write(|w| w.psc().bits(PRESCALER));
+        tim.ccer.modify(|_, w| {
+            w.cc1e()
+                .set_bit()
+                .cc2e()
+                .set_bit()
+                .cc3e()
+                .set_bit()
+                .cc4e()
+                .set_bit()
+        });
+        tim.cr1.modify(|_, w| w.cen().set_bit());
+        unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::TIM4) };
     }
-
-    // PB6, PB7, PB8, PB9
-    // Disable capture on both channels during setting
-    // (for Channel X bit is CCXE)
-    tim.ccer.modify(|_, w| {
-        w.cc1e()
-            .clear_bit()
-            .cc2e()
-            .clear_bit()
-            .cc3e()
-            .clear_bit()
-            .cc4e()
-            .clear_bit()
-            .cc1p()
-            .set_bit()
-            .cc2p()
-            .set_bit()
-            .cc3p()
-            .set_bit()
-            .cc4p()
-            .set_bit()
-    });
-
-    // Define the direction of the channel (input/output)
-    // and the used input
-    tim.ccmr1_input().modify(|_, w| w.cc1s().ti1().cc2s().ti2());
-    tim.ccmr2_input().modify(|_, w| w.cc3s().ti3().cc4s().ti4());
-
-    // DMA enable interrupt register
-    tim.dier.write(|w| {
-        w.cc1ie()
-            .enabled()
-            .cc2ie()
-            .enabled()
-            .cc3ie()
-            .enabled()
-            .cc4ie()
-            .enabled()
-    });
-
-    // Configure slave mode control register
-    // Selects the trigger input to be used to synchronize the counter
-    // 101: Filtered Timer Input 1 (TI1FP1)
-    // ---------------------------------------
-    // Slave Mode Selection :
-    // Trigger Mode - The counter starts at a rising edge of the trigger TRGI
-    // (but it is not reset). Only the start of the counter is controlled.
-    tim.smcr.modify(|_, w| w.ts().ti1fp1().sms().trigger_mode());
-
-    // auto reload register
-    tim.arr.write(|w| w.arr().bits(u16::MAX));
-    tim.psc.write(|w| w.psc().bits(PRESCALER));
-    tim.ccer.modify(|_, w| {
-        w.cc1e()
-            .set_bit()
-            .cc2e()
-            .set_bit()
-            .cc3e()
-            .set_bit()
-            .cc4e()
-            .set_bit()
-    });
-    tim.cr1.modify(|_, w| w.cen().set_bit());
-    unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::TIM4) };
 }

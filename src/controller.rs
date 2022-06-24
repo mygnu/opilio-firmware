@@ -1,16 +1,13 @@
-use core::mem::size_of;
-
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
 use micromath::F32Ext;
+use opilio_data::{Config, Configs, FanId};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PB12, PB13, PB14, PB15},
     pac::ADC1,
     timer::Channel,
 };
-
-use opilio_data::{Config, Configs, FanId};
 
 use crate::PwmTimer2;
 
@@ -31,29 +28,10 @@ pub const MAX_TEMP: f32 = 40.0;
 pub const ADC_RESOLUTION: f32 = 4096.0;
 
 /// start address: 0x08000000
-/// used by program: 50 KIB or 51200 bytes
-/// we can use the rest of the 64K memory (14kb) for storage
-// pub const FLASH_START_OFFSET: u32 = 0x0C800;
+/// used by program: 60 KIB
+/// we can use the rest from the 64K memory (4kb) for storage
 pub const FLASH_START_OFFSET: u32 = 0xF000;
 pub const MAX_DUTY_PWM: u16 = 2000;
-
-// #[derive(Copy, Clone, Format, Deserialize, Serialize)]
-// pub struct Config {
-//     pub id: FanId,
-//     enabled: bool,
-//     min_duty: f32,
-//     max_duty: f32,
-//     min_temp: f32,
-//     max_temp: f32,
-// }
-
-// #[derive(Format, Copy, Debug, Clone, Deserialize, Serialize, PartialEq)]
-// pub enum FanId {
-//     F1 = 1,
-//     F2 = 2,
-//     F3 = 3,
-//     F4 = 4,
-// }
 
 trait ChannelMap {
     fn channel(&self) -> Channel;
@@ -106,10 +84,7 @@ impl Controller {
             red_led,
             blue_led,
         };
-
         controller.setup_pwm();
-
-        defmt::println!("Configs size {}", size_of::<Configs>());
 
         controller
     }
@@ -154,7 +129,7 @@ impl Controller {
         }
     }
 
-    pub fn get_temperature(&mut self) -> f32 {
+    fn get_temperature(&mut self) -> f32 {
         if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
             self.red_led.set_low();
             adc_reading_to_temp(adc1_reading)

@@ -1,5 +1,4 @@
 #![no_std]
-
 pub mod controller;
 pub mod serial_handler;
 pub mod tacho;
@@ -9,10 +8,8 @@ use core::{
 };
 
 use controller::FLASH_START_OFFSET;
-
 // global logger
 use defmt_rtt as _;
-
 use opilio_data::Configs;
 use panic_probe as _;
 use postcard::{from_bytes, to_vec};
