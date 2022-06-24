@@ -1,5 +1,5 @@
 [package]
-name = "opilio"
+name = "opilio_firmware"
 version = "0.1.0"
 edition = "2021"
 

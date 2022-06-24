@@ -12,8 +12,9 @@ const PRESCALER: u16 = 480;
 mod app {
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
-    use opilio::{
+    use opilio_firmware::{
         controller::{Controller, FanId},
+        serial_handler,
         tacho::TachoReader,
         Configs, PwmTimer2,
     };
@@ -27,6 +28,8 @@ mod app {
     use systick_monotonic::{ExtU64, Systick};
     use usb_device::prelude::*;
 
+    const TO_STANDBY_S: u32 = 60 * 10;
+
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = Systick<100>; // 100 Hz / 10 ms granularity
 
@@ -38,7 +41,7 @@ mod app {
         flash: Parts,
         controller: Controller,
         tacho: TachoReader,
-        tick: u8,
+        tick: u32,
     }
 
     #[local]
@@ -181,14 +184,12 @@ mod app {
 
         (cx.shared.controller, cx.shared.configs, cx.shared.tick).lock(
             |ctl, configs, tick| {
-                if *tick > 120 {
-                    if !configs.persistent {
-                        ctl.standby_mode();
-                    }
-                } else {
+                if configs.persistent || *tick < TO_STANDBY_S {
                     ctl.active_mode();
                     ctl.adjust_pwm(configs);
-                    *tick += 1;
+                    *tick = tick.saturating_add(1);
+                } else {
+                    ctl.standby_mode();
                 }
             },
         );
@@ -207,9 +208,7 @@ mod app {
 
         (&mut usb_dev, &mut serial, &mut configs, &mut flash).lock(
             |usb_dev, serial, configs, flash| {
-                opilio::serial_handler::usb_poll(
-                    usb_dev, serial, configs, flash,
-                );
+                serial_handler::usb_poll(usb_dev, serial, configs, flash);
             },
         );
     }
@@ -271,9 +270,7 @@ mod app {
 
         (&mut usb_dev, &mut serial, &mut configs, &mut flash).lock(
             |usb_dev, serial, configs, flash| {
-                opilio::serial_handler::usb_poll(
-                    usb_dev, serial, configs, flash,
-                );
+                serial_handler::usb_poll(usb_dev, serial, configs, flash);
             },
         );
     }
