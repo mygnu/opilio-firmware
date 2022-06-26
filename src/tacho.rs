@@ -1,5 +1,5 @@
 use defmt::Format;
-use opilio_data::{FanId, RpmData};
+use shared::{FanId, RpmData};
 
 const FANS: &[FanId] = &[FanId::F1, FanId::F2, FanId::F3, FanId::F4];
 

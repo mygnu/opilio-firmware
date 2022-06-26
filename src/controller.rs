@@ -1,7 +1,7 @@
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
 use micromath::F32Ext;
-use opilio_data::{Config, Configs, FanId};
+use shared::{Config, Configs, FanId};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PB12, PB13, PB14, PB15},
@@ -122,14 +122,14 @@ impl Controller {
     }
 
     pub fn adjust_pwm(&mut self, configs: &Configs) {
-        let temp = self.get_temperature();
+        let temp = self.get_temp();
         defmt::info!("Temp: {}", temp);
         for conf in configs.as_ref() {
             self.set_duty(&conf, temp);
         }
     }
 
-    fn get_temperature(&mut self) -> f32 {
+    pub fn get_temp(&mut self) -> f32 {
         if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
             self.red_led.set_low();
             adc_reading_to_temp(adc1_reading)

@@ -330,16 +330,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "546c37ac5d9e56f55e73b677106873d9d9f5190605e41a856503623648488cae"
 
 [[package]]
-name = "opilio_data"
-version = "0.1.0"
-dependencies = [
- "defmt",
- "heapless",
- "postcard",
- "serde",
-]
-
-[[package]]
 name = "opilio_firmware"
 version = "0.1.0"
 dependencies = [
@@ -351,10 +341,10 @@ dependencies = [
  "heapless",
  "micromath",
  "nb 1.0.0",
- "opilio_data",
  "panic-probe",
  "postcard",
  "serde",
+ "shared",
  "stm32f1xx-hal",
  "systick-monotonic",
  "usb-device",
@@ -556,6 +546,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "shared"
+version = "0.1.0"
+dependencies = [
+ "defmt",
+ "heapless",
+ "postcard",
+ "serde",
 ]
 
 [[package]]

@@ -10,9 +10,9 @@ use core::{
 use controller::FLASH_START_OFFSET;
 // global logger
 use defmt_rtt as _;
-use opilio_data::Configs;
 use panic_probe as _;
 use postcard::{from_bytes, to_vec};
+use shared::{Configs, Result};
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
     gpio::{
@@ -46,13 +46,6 @@ pub fn exit() -> ! {
     }
 }
 
-/// Result type used by Opilio.
-pub type Result<T> = ::core::result::Result<T, Error>;
-
-pub enum Error {
-    Deserialize,
-}
-
 pub type PwmTimer2 = PwmHz<
     pac::TIM2,
     Tim2NoRemap,
@@ -67,7 +60,7 @@ pub type PwmTimer2 = PwmHz<
 
 pub trait FlashOps {
     fn from_flash(flash: &mut flash::Parts) -> Configs;
-    fn save_to_flash(&self, flash: &mut flash::Parts);
+    fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()>;
 }
 
 impl FlashOps for Configs {
@@ -90,21 +83,24 @@ impl FlashOps for Configs {
         Configs::default()
     }
 
-    fn save_to_flash(&self, flash: &mut flash::Parts) {
+    fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()> {
         let mut writer = get_writer(flash);
 
-        if let Ok(buff) = to_vec::<Configs, 88>(&self) {
-            defmt::debug!("{}", self);
-            defmt::debug!("Saving {} to flash", buff);
-            defmt::debug!("length {}", buff.len());
-            writer.page_erase(FLASH_START_OFFSET).ok();
+        let buff = to_vec::<Configs, 88>(&self)?;
+        defmt::debug!("{}", self);
+        defmt::debug!("Saving {} to flash", buff);
+        defmt::debug!("length {}", buff.len());
+        writer
+            .page_erase(FLASH_START_OFFSET)
+            .map_err(|_| shared::Error::FlashErase)?;
 
-            writer.write(FLASH_START_OFFSET, buff.deref()).ok();
-        }
+        writer
+            .write(FLASH_START_OFFSET, buff.deref())
+            .map_err(|_| shared::Error::FlashWrite)?;
+        Ok(())
     }
 }
 
 fn get_writer(flash: &mut flash::Parts) -> flash::FlashWriter {
-    let writer = flash.writer(SectorSize::Sz1K, FlashSize::Sz64K);
-    writer
+    flash.writer(SectorSize::Sz1K, FlashSize::Sz64K)
 }

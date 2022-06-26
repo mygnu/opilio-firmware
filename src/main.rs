@@ -6,11 +6,11 @@ mod app {
 
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
-    use opilio_data::{Configs, FanId};
     use opilio_firmware::{
         controller::Controller, serial_handler, tacho::TachoReader, FlashOps,
         PwmTimer2,
     };
+    use shared::{Configs, FanId, PID, VID};
     use stm32f1xx_hal::{
         adc::Adc,
         flash::{FlashExt, Parts},
@@ -95,7 +95,7 @@ mod app {
 
         let usb_dev = UsbDeviceBuilder::new(
             unsafe { USB_BUS.as_ref().unwrap() },
-            UsbVidPid(0x1209, 0x0010),
+            UsbVidPid(VID, PID),
         )
         .manufacturer("Opilio")
         .product("Open Source PC Fan Controller")
@@ -145,7 +145,7 @@ mod app {
 
         let tacho = TachoReader::default();
 
-        periodic::spawn().unwrap();
+        periodic::spawn().ok();
 
         (
             Shared {
@@ -185,22 +185,12 @@ mod app {
         });
 
         // Periodic ever 1 seconds
-        periodic::spawn_after(ExtU64::secs(1)).unwrap();
+        periodic::spawn_after(ExtU64::secs(1)).ok();
     }
 
     #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, configs, flash])]
-    fn usb_tx(cx: usb_tx::Context) {
+    fn usb_tx(_cx: usb_tx::Context) {
         debug!("usb tx");
-        let mut usb_dev = cx.shared.usb_dev;
-        let mut serial = cx.shared.serial;
-        let mut configs = cx.shared.configs;
-        let mut flash = cx.shared.flash;
-
-        (&mut usb_dev, &mut serial, &mut configs, &mut flash).lock(
-            |usb_dev, serial, configs, flash| {
-                serial_handler::usb_poll(usb_dev, serial, configs, flash);
-            },
-        );
     }
 
     #[idle]
@@ -209,7 +199,7 @@ mod app {
             // Now Wait For Interrupt is used instead of a busy-wait loop
             // to allow MCU to sleep between interrupts
             // https://developer.arm.com/documentation/ddi0406/c/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/WFI
-            rtic::export::nop()
+            rtic::export::nop();
         }
     }
 
@@ -244,7 +234,7 @@ mod app {
         tim.sr.write(|w| w.uif().clear_bit());
     }
 
-    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, configs, flash, tick])]
+    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, configs, flash, tick, controller, tacho])]
     fn usb_rx0(cx: usb_rx0::Context) {
         debug!("usb rx");
         let mut usb_dev = cx.shared.usb_dev;
@@ -252,17 +242,29 @@ mod app {
         let mut configs = cx.shared.configs;
         let mut flash = cx.shared.flash;
         let mut tick = cx.shared.tick;
+        let mut controller = cx.shared.controller;
+        let mut tacho = cx.shared.tacho;
 
         // reset tick on usb communication
         tick.lock(|c| {
             *c = 0;
         });
 
-        (&mut usb_dev, &mut serial, &mut configs, &mut flash).lock(
-            |usb_dev, serial, configs, flash| {
-                serial_handler::usb_poll(usb_dev, serial, configs, flash);
-            },
-        );
+        (
+            &mut usb_dev,
+            &mut serial,
+            &mut configs,
+            &mut flash,
+            &mut controller,
+            &mut tacho,
+        )
+            .lock(
+                |usb_dev, serial, configs, flash, controller, tacho| {
+                    serial_handler::usb_poll(
+                        usb_dev, serial, configs, flash, controller, tacho,
+                    );
+                },
+            );
     }
 }
 

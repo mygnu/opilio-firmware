@@ -28,7 +28,7 @@ stm32f1xx-hal = { version = "0.9", features = [
 ] }
 usb-device = "0.2"
 usbd-serial = "0.1"
-opilio_data = { path = "../opilio/opilio_data" }
+shared = { path = "../opilio/shared" }
 
 
 # cargo build/run
