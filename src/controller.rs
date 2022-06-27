@@ -12,26 +12,20 @@ use stm32f1xx_hal::{
 use crate::PwmTimer2;
 
 pub const MAX_DUTY_PERCENT: f32 = 100.0;
-pub const MIN_DUTY_PERCENT: f32 = 10.0; // 10% usually when a pwm fan starts to spin
+// 10% usually when a pwm fan starts to spin
+pub const MIN_DUTY_PERCENT: f32 = 10.0;
+
 /// 10k resistor measured resistance in Ohms
-pub const R_10K: f32 = 10000.0;
-/// voltage
-pub const V_SUPPLY: f32 = 3.3;
+const R_10K: f32 = 10000.0;
+/// voltage to the VREF
+const V_SUPPLY: f32 = 3.3;
 /// B-coefficient of the thermistor (guessed)
-pub const B_PARAM: f32 = 3700.0; //3200.0;
+const B_PARAM: f32 = 3700.0;
+
 /// 0*C in kelvin
-pub const ZERO_K_IN_C: f32 = 273.15;
-
-pub const MIN_TEMP: f32 = 15.0;
-pub const MAX_TEMP: f32 = 40.0;
+const ZERO_K_IN_C: f32 = 273.15;
 // Analog to digital resolution
-pub const ADC_RESOLUTION: f32 = 4096.0;
-
-/// start address: 0x08000000
-/// used by program: 60 KIB
-/// we can use the rest from the 64K memory (4kb) for storage
-pub const FLASH_START_OFFSET: u32 = 0xF000;
-pub const MAX_DUTY_PWM: u16 = 2000;
+const ADC_RESOLUTION: f32 = 4096.0;
 
 trait ChannelMap {
     fn channel(&self) -> Channel;
@@ -51,6 +45,12 @@ impl ChannelMap for FanId {
     }
 }
 
+/// controller for most of the output of opilio
+/// Responsible for
+/// - Reading thermistor and converting it to temperature in C
+/// - Enable/Disable fan and pump mosfets (via mosfet drivers)
+/// - Controls Red an Blue single leds
+/// - Controls PWM signal for Fans and pumps
 pub struct Controller {
     adc: Adc<ADC1>,
     max_pwm_duty: u16,
@@ -64,7 +64,7 @@ pub struct Controller {
 
 impl Controller {
     pub fn new(
-        timer2: PwmTimer2,
+        mut timer2: PwmTimer2,
         adc: Adc<ADC1>,
         thermistor_pin: PA4<Analog>,
         fan_enable: PB12<Output<PushPull>>,
@@ -73,8 +73,15 @@ impl Controller {
         blue_led: PB15<Output<PushPull>>,
     ) -> Self {
         let max_pwm_duty = timer2.get_max_duty();
+        let min_duty = max_pwm_duty * 10 / 100;
 
-        let mut controller = Self {
+        // enable all channel as pwm output with minimum 10% duty cycle
+        for channel in [Channel::C1, Channel::C2, Channel::C3, Channel::C4] {
+            timer2.enable(channel);
+            timer2.set_duty(channel, min_duty);
+        }
+
+        Self {
             thermistor_pin,
             adc,
             max_pwm_duty,
@@ -83,12 +90,11 @@ impl Controller {
             pump_enable,
             red_led,
             blue_led,
-        };
-        controller.setup_pwm();
-
-        controller
+        }
     }
 
+    /// puts fan and pump mosfets in off mode
+    /// blue signal led is set high
     pub fn standby_mode(&mut self) {
         if self.fan_enable.is_set_high() {
             debug!("turning off fan and pump");
@@ -100,6 +106,9 @@ impl Controller {
             self.blue_led.set_high();
         }
     }
+
+    /// puts fan and pump mosfets in on mode
+    /// blue signal led is set low
     pub fn active_mode(&mut self) {
         if self.fan_enable.is_set_low() {
             debug!("enabling fan and pump");
@@ -112,15 +121,8 @@ impl Controller {
         }
     }
 
-    fn setup_pwm(&mut self) {
-        let min_duty = self.max_pwm_duty * 10 / 100;
-        use Channel::*;
-        for channel in [C1, C2, C3, C4] {
-            self.pwm_timer.enable(channel);
-            self.pwm_timer.set_duty(channel, min_duty);
-        }
-    }
-
+    /// Adjust PWM on all channels according to the configuration
+    /// and temperature reading
     pub fn adjust_pwm(&mut self, configs: &Configs) {
         let temp = self.get_temp();
         defmt::info!("Temp: {}", temp);
@@ -129,6 +131,9 @@ impl Controller {
         }
     }
 
+    /// reads temperature in celsius degrees
+    /// if there is an error we assume that its 30 degrees
+    /// red led is turned on in case of error
     pub fn get_temp(&mut self) -> f32 {
         if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
             self.red_led.set_low();
@@ -155,15 +160,12 @@ impl Controller {
             let duty_to_set = self.max_pwm_duty / 100 * duty_percent as u16;
 
             trace!("duty {}", duty_to_set);
-            self.set_channel_duty(conf.id, duty_to_set)
+            self.pwm_timer.set_duty(conf.id.channel(), duty_to_set)
         }
-    }
-
-    fn set_channel_duty(&mut self, id: FanId, duty: u16) {
-        self.pwm_timer.set_duty(id.channel(), duty)
     }
 }
 
+/// converts ADC reading value to degrees celsius
 fn adc_reading_to_temp(adc_reading: u16) -> f32 {
     let v_out: f32 = adc_reading as f32 * V_SUPPLY / ADC_RESOLUTION;
     trace!("v_out {}", v_out);
