@@ -7,7 +7,6 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use controller::FLASH_START_OFFSET;
 // global logger
 use defmt_rtt as _;
 use panic_probe as _;
@@ -22,6 +21,11 @@ use stm32f1xx_hal::{
     pac,
     timer::{Ch, PwmHz, Tim2NoRemap, C1, C2, C3, C4},
 };
+
+/// start address: 0x08000000
+/// used by program: 60 KIB
+/// we can use the rest from the 64K memory (4kb) for storage
+const FLASH_START_OFFSET: u32 = 0xF000;
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is

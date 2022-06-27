@@ -203,6 +203,9 @@ mod app {
         }
     }
 
+    /// timer4 interrupt handler
+    /// triggers every time a channel is on the rising edge
+    /// updates the tacho value to be
     #[task(binds = TIM4, shared = [tacho])]
     fn tim4(mut cx: tim4::Context) {
         let tim = unsafe { &(*TIM4::ptr()) };
@@ -212,28 +215,28 @@ mod app {
             if status_register.cc1if().bits() {
                 let current = tim.ccr1.read().bits() as u16;
                 t.update(FanId::F1, current);
-                // println!("tick1 {:#?}", t);
                 tim.sr.write(|w| w.cc1if().clear_bit());
             } else if status_register.cc2if().bits() {
                 let current = tim.ccr2.read().bits() as u16;
                 t.update(FanId::F2, current);
-                // println!("tick2 {:?}", t);
+
                 tim.sr.write(|w| w.cc2if().clear_bit());
             } else if status_register.cc3if().bits() {
                 let current = tim.ccr3.read().bits() as u16;
                 t.update(FanId::F3, current);
-                // println!("tick3 {:?}", t);
+
                 tim.sr.write(|w| w.cc3if().clear_bit());
             } else if status_register.cc4if().bits() {
                 let current = tim.ccr4.read().bits() as u16;
                 t.update(FanId::F4, current);
                 tim.sr.write(|w| w.cc4if().clear_bit());
-                // println!("tick4 {:?}", t);
             }
         });
         tim.sr.write(|w| w.uif().clear_bit());
     }
 
+    /// usb_rx0 interrupt handler
+    /// triggers every time there is incoming data on usb serial bus
     #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, configs, flash, tick, controller, tacho])]
     fn usb_rx0(cx: usb_rx0::Context) {
         debug!("usb rx");
@@ -275,8 +278,12 @@ mod timer_setup {
         rcc::{Enable, Reset},
     };
 
+    /// since main clock is 48Mhz,
+    /// 480 prescaler gives us a nice 10 microsecond tick
+    /// good enough to measure fan rpm values
     pub const PRESCALER: u16 = 480;
-    /// setup timer
+
+    /// setup timer (fake consumption of pins so we don't accidentally use them for other purposes)
     pub fn timer4_input_setup(
         _pb6: PB6<Input<Floating>>,
         _pb7: PB7<Input<Floating>>,
@@ -295,7 +302,7 @@ mod timer_setup {
         }
 
         // PB6, PB7, PB8, PB9
-        // Disable capture on both channels during setting
+        // Disable capture on all 4 channels during setting
         // (for Channel X bit is CCXE)
         tim.ccer.modify(|_, w| {
             w.cc1e()
@@ -316,12 +323,11 @@ mod timer_setup {
                 .set_bit()
         });
 
-        // Define the direction of the channel (input/output)
-        // and the used input
+        // configure capture/compare mode resistors and map Timer Input registers
         tim.ccmr1_input().modify(|_, w| w.cc1s().ti1().cc2s().ti2());
         tim.ccmr2_input().modify(|_, w| w.cc3s().ti3().cc4s().ti4());
 
-        // DMA enable interrupt register
+        // configure DMA enable interrupt register for all 4 channels
         tim.dier.write(|w| {
             w.cc1ie()
                 .enabled()
@@ -343,9 +349,11 @@ mod timer_setup {
         // controlled.
         tim.smcr.modify(|_, w| w.ts().ti1fp1().sms().trigger_mode());
 
-        // auto reload register
+        // set auto reload register and prescaler
         tim.arr.write(|w| w.arr().bits(u16::MAX));
         tim.psc.write(|w| w.psc().bits(PRESCALER));
+
+        // enable capture/compare
         tim.ccer.modify(|_, w| {
             w.cc1e()
                 .set_bit()
@@ -356,7 +364,11 @@ mod timer_setup {
                 .cc4e()
                 .set_bit()
         });
+
+        // enable timer counter
         tim.cr1.modify(|_, w| w.cen().set_bit());
+
+        // setup timer interrupt
         unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::TIM4) };
     }
 }
