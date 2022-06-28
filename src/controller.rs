@@ -11,10 +11,6 @@ use stm32f1xx_hal::{
 
 use crate::PwmTimer2;
 
-pub const MAX_DUTY_PERCENT: f32 = 100.0;
-// 10% usually when a pwm fan starts to spin
-pub const MIN_DUTY_PERCENT: f32 = 10.0;
-
 /// 10k resistor measured resistance in Ohms
 const R_10K: f32 = 10000.0;
 /// voltage to the VREF
@@ -37,10 +33,10 @@ impl ChannelMap for FanId {
         use FanId::*;
 
         match self {
-            F1 => C4,
-            F2 => C3,
-            F3 => C2,
-            F4 => C1,
+            F1 => C1,
+            F2 => C2,
+            F3 => C3,
+            F4 => C4,
         }
     }
 }
