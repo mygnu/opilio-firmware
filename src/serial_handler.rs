@@ -1,6 +1,6 @@
 use heapless::Vec;
 use postcard::{from_bytes, to_vec};
-use shared::{Command, Response};
+use shared::{Command, Response, Stats};
 use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice};
 use usbd_serial::SerialPort;
@@ -41,7 +41,7 @@ fn process_command<B: UsbBus>(
         return Ok(());
     }
 
-    defmt::trace!("buf {:?}", buf);
+    defmt::debug!("input buf {:?}", buf);
     let command = from_bytes::<Command>(&buf[0..1])?;
     match command {
         Command::SetConfig => {
@@ -67,21 +67,22 @@ fn process_command<B: UsbBus>(
                 }
             }
         }
-        Command::GetRpm => {
-            let rpm_data = tacho.rpm_data();
-            let bytes = rpm_data.to_vec()?;
-            defmt::debug!("rpm bytes {}", bytes);
+        Command::GetStats => {
+            let (f1, f2, f3, f4) = tacho.rpm_data();
+            let stats = Stats {
+                f1,
+                f2,
+                f3,
+                f4,
+                t1: controller.get_temp().unwrap_or(0.0),
+            };
+            let bytes = stats.to_vec()?;
+            defmt::debug!("stats bytes {}", bytes);
             serial
                 .write(bytes.as_ref())
                 .map_err(|_| shared::Error::SerialWrite)?;
         }
-        Command::GetTemp => {
-            let temp = controller.get_temp();
-            let bytes: Vec<u8, 3> = to_vec(&temp)?;
-            serial
-                .write(bytes.as_ref())
-                .map_err(|_| shared::Error::SerialWrite)?;
-        }
+
         Command::SaveConfig => {
             configs.save_to_flash(flash)?;
         }

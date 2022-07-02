@@ -120,7 +120,7 @@ impl Controller {
     /// Adjust PWM on all channels according to the configuration
     /// and temperature reading
     pub fn adjust_pwm(&mut self, configs: &Configs) {
-        let temp = self.get_temp();
+        let temp = self.get_temp().unwrap_or(40.0); // assume we are running hot
         defmt::info!("Temp: {}", temp);
         for conf in configs.as_ref() {
             self.set_duty(&conf, temp);
@@ -130,13 +130,13 @@ impl Controller {
     /// reads temperature in celsius degrees
     /// if there is an error we assume that its 30 degrees
     /// red led is turned on in case of error
-    pub fn get_temp(&mut self) -> f32 {
+    pub fn get_temp(&mut self) -> Option<f32> {
         if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
             self.red_led.set_low();
-            adc_reading_to_temp(adc1_reading)
+            Some(adc_reading_to_temp(adc1_reading))
         } else {
             self.red_led.set_high();
-            30.0 // assume we are running hot
+            None
         }
     }
 
