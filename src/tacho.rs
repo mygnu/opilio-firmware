@@ -1,5 +1,5 @@
 use defmt::Format;
-use shared::{FanId, RpmData};
+use shared::FanId;
 
 const FANS: &[FanId] = &[FanId::F1, FanId::F2, FanId::F3, FanId::F4];
 
@@ -71,12 +71,12 @@ impl TachoReader {
             rpm
         }
     }
-    pub fn rpm_data(&mut self) -> RpmData {
-        RpmData {
-            f1: self.rpm(FanId::F1),
-            f2: self.rpm(FanId::F2),
-            f3: self.rpm(FanId::F3),
-            f4: self.rpm(FanId::F4),
-        }
+    pub fn rpm_data(&mut self) -> (f32, f32, f32, f32) {
+        (
+            self.rpm(FanId::F1),
+            self.rpm(FanId::F2),
+            self.rpm(FanId::F3),
+            self.rpm(FanId::F4),
+        )
     }
 }

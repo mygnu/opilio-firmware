@@ -178,11 +178,11 @@ mod app {
             },
         );
 
-        let mut tacho = cx.shared.tacho;
+        // let mut tacho = cx.shared.tacho;
 
-        tacho.lock(|t| {
-            defmt::println!("{}", t.rpm_data());
-        });
+        // tacho.lock(|t| {
+        //     defmt::println!("{}", t.rpm_data());
+        // });
 
         // Periodic ever 1 seconds
         periodic::spawn_after(ExtU64::secs(1)).ok();
