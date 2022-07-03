@@ -98,8 +98,7 @@ mod app {
             UsbVidPid(VID, PID),
         )
         .manufacturer("Opilio")
-        .product("Open Source PC Fan Controller")
-        .serial_number("0A455")
+        .product("Opilio - PC Fan/Pump Controller v1")
         .device_class(usbd_serial::USB_CLASS_CDC)
         .build();
 
