@@ -1,6 +1,6 @@
 # opilio-firmware
 
-Firmware for STM32F103C8 based custom board for PC wantercooling project.
+Firmware for STM32F103C8 based custom board for PC watercooling project.
 
 Schema file can be found here [Schema](opilio_pcb/renders/schema.pdf)
 
