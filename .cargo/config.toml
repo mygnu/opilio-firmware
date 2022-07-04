@@ -1,6 +1,7 @@
 [target.thumbv7m-none-eabi]
 # runner = 'arm-none-eabi-gdb'
 # runner = 'gdb-multiarch'
+# runner = 'probe-run --chip STM32F103C8 --measure-stack'
 runner = 'probe-run --chip STM32F103C8'
 rustflags = [
     "-C",

@@ -11,7 +11,7 @@ use core::{
 use defmt_rtt as _;
 use panic_probe as _;
 use postcard::{from_bytes, to_vec};
-use shared::{Configs, Result};
+use shared::{error::Error, Configs, Result};
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
     gpio::{
@@ -96,11 +96,11 @@ impl FlashOps for Configs {
         defmt::debug!("length {}", buff.len());
         writer
             .page_erase(FLASH_START_OFFSET)
-            .map_err(|_| shared::Error::FlashErase)?;
+            .map_err(|_| Error::FlashErase)?;
 
         writer
             .write(FLASH_START_OFFSET, buff.deref())
-            .map_err(|_| shared::Error::FlashWrite)?;
+            .map_err(|_| Error::FlashWrite)?;
         Ok(())
     }
 }

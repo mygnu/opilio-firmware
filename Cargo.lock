@@ -549,7 +549,8 @@ dependencies = [
 
 [[package]]
 name = "shared"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/mygnu/opilio.git?branch=improved-serial-data#c63ae41a033895827d12f31de095c251288ba3db"
 dependencies = [
  "defmt",
  "heapless",

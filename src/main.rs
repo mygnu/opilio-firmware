@@ -282,7 +282,8 @@ mod timer_setup {
     /// good enough to measure fan rpm values
     pub const PRESCALER: u16 = 480;
 
-    /// setup timer (fake consumption of pins so we don't accidentally use them for other purposes)
+    /// setup timer (fake consumption of pins so we don't accidentally use them
+    /// for other purposes)
     pub fn timer4_input_setup(
         _pb6: PB6<Input<Floating>>,
         _pb7: PB7<Input<Floating>>,
@@ -322,7 +323,8 @@ mod timer_setup {
                 .set_bit()
         });
 
-        // configure capture/compare mode resistors and map Timer Input registers
+        // configure capture/compare mode resistors and map Timer Input
+        // registers
         tim.ccmr1_input().modify(|_, w| w.cc1s().ti1().cc2s().ti2());
         tim.ccmr2_input().modify(|_, w| w.cc3s().ti3().cc4s().ti4());
 
