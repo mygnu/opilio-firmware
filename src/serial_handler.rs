@@ -22,7 +22,7 @@ pub fn usb_poll<B: UsbBus>(
         return;
     }
     if let Err(e) = process_command(serial, configs, tacho, controller, flash) {
-        defmt::error!("{}", e);
+        defmt::trace!("usb_poll error: {}", e);
     }
 }
 
@@ -43,7 +43,7 @@ fn process_command<B: UsbBus>(
 
     defmt::debug!("Input buf {:?}", buf);
     let otw_in = OTW::from_bytes(&buf)?;
-    defmt::debug!("Received {:?}", otw_in);
+    defmt::info!("Received {:?}", otw_in);
     match otw_in.cmd() {
         Cmd::SetConfig => {
             if let Data::Config(new_config) = otw_in.data() {
@@ -75,7 +75,7 @@ fn process_command<B: UsbBus>(
                 rpm2,
                 rpm3,
                 rpm4,
-                temp1: controller.get_temp().unwrap_or(0.0),
+                temp1: controller.get_temp(),
             };
             let otw = OTW::new(Cmd::Stats, Data::Stats(stats))?.to_vec()?;
             defmt::debug!("stats bytes {}", otw);

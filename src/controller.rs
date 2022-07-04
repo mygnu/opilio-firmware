@@ -1,7 +1,8 @@
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
+use heapless::Vec;
 use micromath::F32Ext;
-use shared::{Config, Configs, FanId};
+use shared::{error::Error, Config, Configs, FanId, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PB12, PB13, PB14, PB15},
@@ -56,6 +57,7 @@ pub struct Controller {
     blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
     thermistor_pin: PA4<Analog>,
+    temps: Vec<f32, 2>,
 }
 
 impl Controller {
@@ -76,6 +78,9 @@ impl Controller {
             timer2.enable(channel);
             timer2.set_duty(channel, min_duty);
         }
+        let mut temps = Vec::new();
+        temps.push(20.0).ok();
+        temps.push(20.0).ok();
 
         Self {
             thermistor_pin,
@@ -86,6 +91,7 @@ impl Controller {
             pump_enable,
             red_led,
             blue_led,
+            temps,
         }
     }
 
@@ -120,23 +126,35 @@ impl Controller {
     /// Adjust PWM on all channels according to the configuration
     /// and temperature reading
     pub fn adjust_pwm(&mut self, configs: &Configs) {
-        let temp = self.get_temp().unwrap_or(40.0); // assume we are running hot
+        let temp = if self.fetch_current_temp().is_ok() {
+            self.get_temp()
+        } else {
+            // assume we are running hot
+            35.0
+        };
         defmt::info!("Temp: {}", temp);
         for conf in configs.as_ref() {
             self.set_duty(&conf, temp);
         }
     }
 
+    pub fn get_temp(&mut self) -> f32 {
+        (self.temps[0] + self.temps[1]) / 2.0
+    }
+
     /// reads temperature in celsius degrees
     /// if there is an error we assume that its 30 degrees
     /// red led is turned on in case of error
-    pub fn get_temp(&mut self) -> Option<f32> {
+    pub fn fetch_current_temp(&mut self) -> Result<()> {
         if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
             self.red_led.set_low();
-            Some(adc_reading_to_temp(adc1_reading))
+            let old_temp = self.temps.swap_remove(0);
+            let new_temp = adc_reading_to_temp(adc1_reading);
+            self.temps.push((old_temp + new_temp) / 2.0).ok();
+            Ok(())
         } else {
             self.red_led.set_high();
-            None
+            Err(Error::Unknown)
         }
     }
 

@@ -169,6 +169,7 @@ mod app {
             |ctl, configs, tick| {
                 if configs.persistent || *tick < TO_STANDBY_S {
                     ctl.active_mode();
+
                     ctl.adjust_pwm(configs);
                     *tick = tick.saturating_add(1);
                 } else {
@@ -177,14 +178,8 @@ mod app {
             },
         );
 
-        // let mut tacho = cx.shared.tacho;
-
-        // tacho.lock(|t| {
-        //     defmt::println!("{}", t.rpm_data());
-        // });
-
-        // Periodic ever 1 seconds
-        periodic::spawn_after(ExtU64::secs(1)).ok();
+        // Periodic ever 450 ms
+        periodic::spawn_after(ExtU64::millis(450)).ok();
     }
 
     #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, configs, flash])]
