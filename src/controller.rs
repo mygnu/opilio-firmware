@@ -130,6 +130,7 @@ impl Controller {
             self.get_temp()
         } else {
             // assume we are running hot
+            // in case thermistor is faulty or unplugged
             35.0
         };
         defmt::info!("Temp: {}", temp);
@@ -143,7 +144,6 @@ impl Controller {
     }
 
     /// reads temperature in celsius degrees
-    /// if there is an error we assume that its 30 degrees
     /// red led is turned on in case of error
     pub fn fetch_current_temp(&mut self) -> Result<()> {
         if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
