@@ -1,8 +1,8 @@
-use heapless::Vec;
-use postcard::to_vec;
-use shared::{
+use common::{
     error::Error, Cmd, Data, Response, Result, Stats, MAX_SERIAL_DATA_SIZE, OTW,
 };
+use heapless::Vec;
+use postcard::to_vec;
 use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice};
 use usbd_serial::SerialPort;

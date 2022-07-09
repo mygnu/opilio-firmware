@@ -27,7 +27,7 @@ stm32f1xx-hal = { version = "0.9", features = [
 ] }
 usb-device = "0.2"
 usbd-serial = "0.1"
-shared = { git = "https://github.com/mygnu/opilio.git",  package = "shared", branch = "improved-serial-data" }
+common = { path = "../opilio/common" }
 
 
 # cargo build/run
@@ -37,7 +37,7 @@ debug = 2
 debug-assertions = true
 incremental = false
 lto = 'fat'
-opt-level = 3
+opt-level = "s"
 overflow-checks = true
 
 

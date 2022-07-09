@@ -4,13 +4,13 @@
 #[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [RTC], peripherals = true)]
 mod app {
 
+    use common::{Configs, FanId, PID, VID};
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
     use opilio_firmware::{
         controller::Controller, serial_handler, tacho::TachoReader, FlashOps,
         PwmTimer2,
     };
-    use shared::{Configs, FanId, PID, VID};
     use stm32f1xx_hal::{
         adc::Adc,
         flash::{FlashExt, Parts},
@@ -24,8 +24,6 @@ mod app {
 
     use super::timer_setup::timer4_input_setup;
 
-    const TO_STANDBY_S: u32 = 60 * 10;
-
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = Systick<100>; // 100 Hz / 10 ms granularity
 
@@ -37,7 +35,7 @@ mod app {
         flash: Parts,
         controller: Controller,
         tacho: TachoReader,
-        tick: u32,
+        tick: u64,
     }
 
     #[local]
@@ -107,7 +105,7 @@ mod app {
 
         let configs = Configs::from_flash(&mut flash);
 
-        defmt::debug!("{}", configs);
+        defmt::debug!("Stored: {}", configs);
 
         // Configure pa4 as an analog input
         let thermistor_pin = gpioa.pa4.into_analog(&mut gpioa.crl);
@@ -164,22 +162,23 @@ mod app {
     #[task(shared = [controller, configs, tacho, tick])]
     fn periodic(cx: periodic::Context) {
         trace!("periodic");
+        // milliseconds
+        let period = 450_u64;
 
         (cx.shared.controller, cx.shared.configs, cx.shared.tick).lock(
             |ctl, configs, tick| {
-                if configs.persistent || *tick < TO_STANDBY_S {
+                if *tick > configs.sleep_after {
+                    ctl.standby_mode();
+                } else {
                     ctl.active_mode();
 
                     ctl.adjust_pwm(configs);
-                    *tick = tick.saturating_add(1);
-                } else {
-                    ctl.standby_mode();
+                    *tick = tick.saturating_add(period);
                 }
             },
         );
 
-        // Periodic ever 450 ms
-        periodic::spawn_after(ExtU64::millis(450)).ok();
+        periodic::spawn_after(period.millis()).ok();
     }
 
     #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, configs, flash])]
@@ -190,9 +189,6 @@ mod app {
     #[idle]
     fn idle(_cx: idle::Context) -> ! {
         loop {
-            // Now Wait For Interrupt is used instead of a busy-wait loop
-            // to allow MCU to sleep between interrupts
-            // https://developer.arm.com/documentation/ddi0406/c/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/WFI
             rtic::export::nop();
         }
     }

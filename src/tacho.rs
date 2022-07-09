@@ -1,5 +1,5 @@
+use common::FanId;
 use defmt::Format;
-use shared::FanId;
 
 const FANS: &[FanId] = &[FanId::F1, FanId::F2, FanId::F3, FanId::F4];
 
@@ -10,8 +10,9 @@ struct Tick {
     updates: u8,
 }
 impl Tick {
+    // reset ticks if no data is received for a while
     #[inline(always)]
-    fn update(&mut self, update: u8) {
+    fn tick(&mut self, update: u8) {
         if self.updates > 30 {
             self.elapsed_ticks = 0;
             self.previous_ticks = 0;
@@ -55,8 +56,9 @@ impl TachoReader {
         t.updates = 0;
         t.previous_ticks = current;
 
+        // register one tick for the rest
         for fan in FANS.iter().filter(|fid| *fid != &fan_id) {
-            self.get_tick(&fan).update(1)
+            self.get_tick(&fan).tick(1)
         }
     }
 
@@ -67,7 +69,7 @@ impl TachoReader {
             0.0
         } else {
             let rpm = 48_000_000.0 / (481.0 * t.elapsed_ticks as f32) * 30.0;
-            t.update(15);
+            t.tick(15);
             rpm
         }
     }

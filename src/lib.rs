@@ -8,10 +8,10 @@ use core::{
 };
 
 // global logger
+use common::{error::Error, Configs, Result};
 use defmt_rtt as _;
 use panic_probe as _;
 use postcard::{from_bytes, to_vec};
-use shared::{error::Error, Configs, Result};
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
     gpio::{
