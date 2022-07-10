@@ -11,7 +11,6 @@ use core::{
 use common::{error::Error, Configs, Result};
 use defmt_rtt as _;
 use panic_probe as _;
-use postcard::{from_bytes, to_vec};
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
     gpio::{
@@ -79,7 +78,7 @@ impl FlashOps for Configs {
             }
         };
 
-        if let Ok(configs) = from_bytes::<Configs>(bytes) {
+        if let Ok(configs) = Configs::from_bytes(bytes) {
             if configs.is_valid() {
                 return configs;
             }
@@ -90,7 +89,7 @@ impl FlashOps for Configs {
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()> {
         let mut writer = get_writer(flash);
 
-        let buff = to_vec::<Configs, 88>(&self)?;
+        let buff = self.to_vec()?;
         defmt::debug!("{}", self);
         defmt::debug!("Saving {} to flash", buff);
         defmt::debug!("length {}", buff.len());

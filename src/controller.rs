@@ -50,7 +50,7 @@ impl ChannelMap for FanId {
 /// - Controls PWM signal for Fans and pumps
 pub struct Controller {
     adc: Adc<ADC1>,
-    max_pwm_duty: u16,
+    max_duty_value: u16,
     fan_enable: PB12<Output<PushPull>>,
     pump_enable: PB13<Output<PushPull>>,
     red_led: PB14<Output<PushPull>>,
@@ -72,8 +72,8 @@ impl Controller {
         red_led: PB14<Output<PushPull>>,
         blue_led: PB15<Output<PushPull>>,
     ) -> Self {
-        let max_pwm_duty = timer2.get_max_duty();
-        let min_duty = max_pwm_duty * 10 / 100;
+        let max_duty_value = timer2.get_max_duty();
+        let min_duty = max_duty_value * 10 / 100;
 
         // enable all channel as pwm output with minimum 10% duty cycle
         for channel in [Channel::C1, Channel::C2, Channel::C3, Channel::C4] {
@@ -88,7 +88,7 @@ impl Controller {
             water_thermistor,
             _ambient_thermistor,
             adc,
-            max_pwm_duty,
+            max_duty_value,
             pwm_timer: timer2,
             fan_enable,
             pump_enable,
@@ -138,7 +138,9 @@ impl Controller {
         };
         defmt::info!("Temp: {}", temp);
         for conf in configs.as_ref() {
-            self.set_duty(&conf, temp);
+            let duty_to_set = conf.get_duty(temp, self.max_duty_value);
+            trace!("duty {}", duty_to_set);
+            self.pwm_timer.set_duty(conf.id.channel(), duty_to_set);
         }
     }
 
@@ -161,25 +163,25 @@ impl Controller {
         }
     }
 
-    fn set_duty(&mut self, conf: &Config, temp: f32) {
-        if conf.enabled {
-            // debug!("Setting duty for: {:#?}", conf);
-            let duty_percent = if temp <= conf.min_temp {
-                0.0 // stop the fan if tem is really low
-            } else if temp >= conf.max_temp {
-                conf.max_duty
-            } else {
-                (conf.max_duty - conf.min_duty) * (temp - conf.min_temp)
-                    / (conf.max_temp - conf.min_temp)
-                    + conf.min_duty
-            };
+    // fn set_duty(&mut self, conf: &Config, temp: f32) {
+    //     if conf.enabled {
+    //         // debug!("Setting duty for: {:#?}", conf);
+    //         let duty_percent = if temp <= conf.min_temp {
+    //             0.0 // stop the fan if tem is really low
+    //         } else if temp >= conf.max_temp {
+    //             conf.max_duty
+    //         } else {
+    //             (conf.max_duty - conf.min_duty) * (temp - conf.min_temp)
+    //                 / (conf.max_temp - conf.min_temp)
+    //                 + conf.min_duty
+    //         };
 
-            let duty_to_set = self.max_pwm_duty / 100 * duty_percent as u16;
+    //         let duty_to_set = self.max_pwm_duty / 100 * duty_percent as u16;
 
-            trace!("duty {}", duty_to_set);
-            self.pwm_timer.set_duty(conf.id.channel(), duty_to_set)
-        }
-    }
+    //         trace!("duty {}", duty_to_set);
+    //         self.pwm_timer.set_duty(conf.id.channel(), duty_to_set)
+    //     }
+    // }
 }
 
 /// converts ADC reading value to degrees celsius
