@@ -108,7 +108,8 @@ mod app {
         defmt::debug!("Stored: {}", configs);
 
         // Configure pa4 as an analog input
-        let thermistor_pin = gpioa.pa4.into_analog(&mut gpioa.crl);
+        let water_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
+        let ambient_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
 
         let pins_a0_a3 = (
             gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl),
@@ -131,7 +132,8 @@ mod app {
         let controller = Controller::new(
             pwm_timer2,
             adc1,
-            thermistor_pin,
+            water_thermistor,
+            ambient_thermistor,
             fan_enable,
             pump_enable,
             red_led,

@@ -2641,7 +2641,7 @@
       )
       (symbol "+3.3V_1_1"
         (pin power_in line (at 0 0 90) (length 0) hide
-          (name "+3V3" (effects (font (size 1.27 1.27))))
+          (name "+3.3V" (effects (font (size 1.27 1.27))))
           (number "1" (effects (font (size 1.27 1.27))))
         )
       )
@@ -2831,6 +2831,7 @@
       )
     )
   )
+
 
   (junction (at 210.185 27.559) (diameter 0) (color 0 0 0 0)
     (uuid 13c052ec-2491-4d03-8902-923a093ed824)
@@ -6098,7 +6099,7 @@
   (symbol (lib_id "power:PWR_FLAG") (at 136.017 69.596 0) (unit 1)
     (in_bom yes) (on_board yes) (fields_autoplaced)
     (uuid a78f4701-09c7-499d-a431-c3099a155bf7)
-    (property "Reference" "#FLG?" (id 0) (at 136.017 67.691 0)
+    (property "Reference" "#FLG0101" (id 0) (at 136.017 67.691 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Value" "PWR_FLAG" (id 1) (at 136.017 66.0202 0))
@@ -6872,6 +6873,22 @@
     (pin "2" (uuid 6b76d58c-3db4-4607-83c5-57cc83d7b1d2))
   )
 
+  (symbol (lib_id "power:PWR_FLAG") (at 124.587 24.257 0) (unit 1)
+    (in_bom yes) (on_board yes)
+    (uuid e8e3e2e3-7ac9-4535-9ead-c94eb0116dc6)
+    (property "Reference" "#FLG0102" (id 0) (at 124.587 22.352 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Value" "PWR_FLAG" (id 1) (at 122.555 20.701 0))
+    (property "Footprint" "" (id 2) (at 124.587 24.257 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "~" (id 3) (at 124.587 24.257 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (pin "1" (uuid b6a101b9-b360-4a30-882c-fdf6967b97cf))
+  )
+
   (symbol (lib_id "power:GND") (at 63.119 27.686 0) (unit 1)
     (in_bom yes) (on_board yes)
     (uuid e96e2b4d-5c78-4ed1-a3be-0b05a6548f04)
@@ -7084,7 +7101,10 @@
 
   (symbol_instances
     (path "/a78f4701-09c7-499d-a431-c3099a155bf7"
-      (reference "#FLG?") (unit 1) (value "PWR_FLAG") (footprint "")
+      (reference "#FLG0101") (unit 1) (value "PWR_FLAG") (footprint "")
+    )
+    (path "/e8e3e2e3-7ac9-4535-9ead-c94eb0116dc6"
+      (reference "#FLG0102") (unit 1) (value "PWR_FLAG") (footprint "")
     )
     (path "/c1e1ecb3-dd47-40fa-886f-0d9dd05b0e48"
       (reference "#PWR01") (unit 1) (value "+3.3V") (footprint "")

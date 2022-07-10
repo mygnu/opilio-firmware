@@ -5,7 +5,7 @@ use heapless::Vec;
 use micromath::F32Ext;
 use stm32f1xx_hal::{
     adc::Adc,
-    gpio::{gpioa::PA4, Analog, Output, PushPull, PB12, PB13, PB14, PB15},
+    gpio::{gpioa::PA4, Analog, Output, PushPull, PA5, PB12, PB13, PB14, PB15},
     pac::ADC1,
     timer::Channel,
 };
@@ -56,15 +56,17 @@ pub struct Controller {
     red_led: PB14<Output<PushPull>>,
     blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
-    thermistor_pin: PA4<Analog>,
-    temps: Vec<f32, 2>,
+    water_thermistor: PA4<Analog>,
+    _ambient_thermistor: PA5<Analog>,
+    water_temps: Vec<f32, 2>,
 }
 
 impl Controller {
     pub fn new(
         mut timer2: PwmTimer2,
         adc: Adc<ADC1>,
-        thermistor_pin: PA4<Analog>,
+        water_thermistor: PA4<Analog>,
+        _ambient_thermistor: PA5<Analog>,
         fan_enable: PB12<Output<PushPull>>,
         pump_enable: PB13<Output<PushPull>>,
         red_led: PB14<Output<PushPull>>,
@@ -83,7 +85,8 @@ impl Controller {
         temps.push(20.0).ok();
 
         Self {
-            thermistor_pin,
+            water_thermistor,
+            _ambient_thermistor,
             adc,
             max_pwm_duty,
             pwm_timer: timer2,
@@ -91,7 +94,7 @@ impl Controller {
             pump_enable,
             red_led,
             blue_led,
-            temps,
+            water_temps: temps,
         }
     }
 
@@ -127,7 +130,7 @@ impl Controller {
     /// and temperature reading
     pub fn adjust_pwm(&mut self, configs: &Configs) {
         let temp = if self.fetch_current_temp().is_ok() {
-            self.get_temp()
+            self.get_water_temp()
         } else {
             // assume we are running hot
             // in case thermistor is faulty or unplugged
@@ -139,18 +142,18 @@ impl Controller {
         }
     }
 
-    pub fn get_temp(&mut self) -> f32 {
-        (self.temps[0] + self.temps[1]) / 2.0
+    pub fn get_water_temp(&mut self) -> f32 {
+        (self.water_temps[0] + self.water_temps[1]) / 2.0
     }
 
     /// reads temperature in celsius degrees
     /// red led is turned on in case of error
     pub fn fetch_current_temp(&mut self) -> Result<()> {
-        if let Ok(adc1_reading) = self.adc.read(&mut self.thermistor_pin) {
+        if let Ok(adc1_reading) = self.adc.read(&mut self.water_thermistor) {
             self.red_led.set_low();
-            let old_temp = self.temps.swap_remove(0);
+            let old_temp = self.water_temps.swap_remove(0);
             let new_temp = adc_reading_to_temp(adc1_reading);
-            self.temps.push((old_temp + new_temp) / 2.0).ok();
+            self.water_temps.push((old_temp + new_temp) / 2.0).ok();
             Ok(())
         } else {
             self.red_led.set_high();

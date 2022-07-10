@@ -75,7 +75,7 @@ fn process_command<B: UsbBus>(
                 rpm2,
                 rpm3,
                 rpm4,
-                temp1: controller.get_temp(),
+                temp1: controller.get_water_temp(),
             };
             let otw = OTW::new(Cmd::Stats, Data::Stats(stats))?.to_vec()?;
             defmt::debug!("stats bytes {}", otw);
@@ -83,9 +83,27 @@ fn process_command<B: UsbBus>(
         }
 
         Cmd::SaveConfig => {
-            configs.save_to_flash(flash)?;
+            if let Err(e) = configs.save_to_flash(flash) {
+                let otw =
+                    OTW::new(Cmd::Result, Data::Result(Response::Error(e)))?
+                        .to_vec()?;
+                serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
+                return Err(e);
+            } else {
+                let otw = OTW::new(Cmd::Result, Data::Result(Response::Ok))?
+                    .to_vec()?;
+                serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
+            }
         }
-        Cmd::Stats | Cmd::Config | Cmd::Result => todo!(),
+        Cmd::SetStandby => {
+            if let Data::U64(sleep_after) = otw_in.data() {
+                configs.sleep_after = sleep_after;
+                let otw = OTW::new(Cmd::Result, Data::Result(Response::Ok))?
+                    .to_vec()?;
+                serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
+            }
+        }
+        Cmd::Stats | Cmd::Config | Cmd::Result => (),
     };
 
     Ok(())
