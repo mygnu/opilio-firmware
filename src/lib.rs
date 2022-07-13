@@ -8,8 +8,8 @@ use core::{
 };
 
 // global logger
-use common::{error::Error, Configs, Result};
 use defmt_rtt as _;
+use opilio_lib::{error::Error, Configs, Result};
 use panic_probe as _;
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},

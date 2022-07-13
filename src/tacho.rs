@@ -1,5 +1,5 @@
-use common::FanId;
 use defmt::Format;
+use opilio_lib::FanId;
 
 const FANS: &[FanId] = &[FanId::F1, FanId::F2, FanId::F3, FanId::F4];
 

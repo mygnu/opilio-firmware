@@ -4,13 +4,13 @@
 #[rtic::app(device = stm32f1xx_hal::pac, dispatchers = [RTC], peripherals = true)]
 mod app {
 
-    use common::{Configs, FanId, PID, VID};
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
     use opilio_firmware::{
         controller::Controller, serial_handler, tacho::TachoReader, FlashOps,
         PwmTimer2,
     };
+    use opilio_lib::{Configs, FanId, PID, VID};
     use stm32f1xx_hal::{
         adc::Adc,
         flash::{FlashExt, Parts},

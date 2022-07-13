@@ -1,8 +1,8 @@
-use common::{error::Error, Config, Configs, FanId, Result};
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
 use heapless::Vec;
 use micromath::F32Ext;
+use opilio_lib::{error::Error, Configs, FanId, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PA5, PB12, PB13, PB14, PB15},
