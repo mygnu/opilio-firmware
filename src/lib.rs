@@ -9,7 +9,7 @@ use core::{
 
 // global logger
 use defmt_rtt as _;
-use opilio_lib::{error::Error, Configs, Result};
+use opilio_lib::{error::Error, Config, Result};
 use panic_probe as _;
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
@@ -62,11 +62,11 @@ pub type PwmTimer2 = PwmHz<
 >;
 
 pub trait FlashOps {
-    fn from_flash(flash: &mut flash::Parts) -> Configs;
+    fn from_flash(flash: &mut flash::Parts) -> Config;
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()>;
 }
 
-impl FlashOps for Configs {
+impl FlashOps for Config {
     fn from_flash(flash: &mut flash::Parts) -> Self {
         let writer = get_writer(flash);
 
@@ -74,16 +74,16 @@ impl FlashOps for Configs {
             Ok(it) => it,
             _ => {
                 defmt::error!("failed to read flash");
-                return Configs::default();
+                return Config::default();
             }
         };
 
-        if let Ok(configs) = Configs::from_bytes(bytes) {
-            if configs.is_valid() {
-                return configs;
+        if let Ok(config) = Config::from_bytes(bytes) {
+            if config.is_valid() {
+                return config;
             }
         }
-        Configs::default()
+        Config::default()
     }
 
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()> {

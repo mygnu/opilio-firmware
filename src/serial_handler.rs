@@ -7,13 +7,13 @@ use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice};
 use usbd_serial::SerialPort;
 
-use crate::{controller::Controller, tacho::TachoReader, Configs, FlashOps};
+use crate::{controller::Controller, tacho::TachoReader, Config, FlashOps};
 
 #[inline(always)]
 pub fn usb_poll<B: UsbBus>(
     usb_dev: &mut UsbDevice<'static, B>,
     serial: &mut SerialPort<'static, B>,
-    configs: &mut Configs,
+    config: &mut Config,
     flash: &mut flash::Parts,
     controller: &mut Controller,
     tacho: &mut TachoReader,
@@ -21,7 +21,7 @@ pub fn usb_poll<B: UsbBus>(
     if !usb_dev.poll(&mut [serial]) {
         return;
     }
-    if let Err(e) = process_command(serial, configs, tacho, controller, flash) {
+    if let Err(e) = process_command(serial, config, tacho, controller, flash) {
         defmt::trace!("usb_poll error: {}", e);
     }
 }
@@ -29,7 +29,7 @@ pub fn usb_poll<B: UsbBus>(
 #[inline(always)]
 fn process_command<B: UsbBus>(
     serial: &mut SerialPort<'static, B>,
-    configs: &mut Configs,
+    config: &mut Config,
     tacho: &mut TachoReader,
     controller: &mut Controller,
     flash: &mut flash::Parts,
@@ -47,7 +47,7 @@ fn process_command<B: UsbBus>(
     match otw_in.cmd() {
         Cmd::SetConfig => {
             if let Data::Config(new_config) = otw_in.data() {
-                configs.set(new_config);
+                *config = new_config;
                 let bytes: Vec<u8, 3> = to_vec(&Response::Ok)?;
                 defmt::info!("Ok: {}", bytes);
                 serial
@@ -56,17 +56,12 @@ fn process_command<B: UsbBus>(
             }
         }
         Cmd::GetConfig => {
-            if let Data::FanId(id) = otw_in.data() {
-                defmt::debug!("id {:?}", id);
-                if let Some(config) = configs.get(id) {
-                    let bytes =
-                        OTW::new(Cmd::Config, Data::Config(config.clone()))?
-                            .to_vec()?;
-                    serial
-                        .write(bytes.as_ref())
-                        .map_err(|_| Error::SerialWrite)?;
-                }
-            }
+            defmt::debug!("get config");
+            let bytes = OTW::new(Cmd::Config, Data::Config(config.clone()))?
+                .to_vec()?;
+            serial
+                .write(bytes.as_ref())
+                .map_err(|_| Error::SerialWrite)?;
         }
         Cmd::GetStats => {
             let (rpm1, rpm2, rpm3, rpm4) = tacho.rpm_data();
@@ -83,7 +78,7 @@ fn process_command<B: UsbBus>(
         }
 
         Cmd::SaveConfig => {
-            if let Err(e) = configs.save_to_flash(flash) {
+            if let Err(e) = config.save_to_flash(flash) {
                 let otw =
                     OTW::new(Cmd::Result, Data::Result(Response::Error(e)))?
                         .to_vec()?;
@@ -97,7 +92,7 @@ fn process_command<B: UsbBus>(
         }
         Cmd::SetStandby => {
             if let Data::U64(sleep_after) = otw_in.data() {
-                configs.sleep_after = sleep_after;
+                config.sleep_after_ms = sleep_after;
                 let otw = OTW::new(Cmd::Result, Data::Result(Response::Ok))?
                     .to_vec()?;
                 serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;

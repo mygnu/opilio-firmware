@@ -2,7 +2,7 @@ use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
 use heapless::Vec;
 use micromath::F32Ext;
-use opilio_lib::{error::Error, Configs, FanId, Result};
+use opilio_lib::{error::Error, Config, FanId, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PA5, PB12, PB13, PB14, PB15},
@@ -101,6 +101,10 @@ impl Controller {
     /// puts fan and pump mosfets in off mode
     /// blue signal led is set high
     pub fn standby_mode(&mut self) {
+        // shut down pwm
+        for channel in [Channel::C1, Channel::C2, Channel::C3, Channel::C4] {
+            self.pwm_timer.set_duty(channel, 0);
+        }
         if self.fan_enable.is_set_high() {
             debug!("turning off fan and pump");
             self.fan_enable.set_low();
@@ -128,7 +132,7 @@ impl Controller {
 
     /// Adjust PWM on all channels according to the configuration
     /// and temperature reading
-    pub fn adjust_pwm(&mut self, configs: &Configs) {
+    pub fn adjust_pwm(&mut self, config: &Config) {
         let temp = if self.fetch_current_temp().is_ok() {
             self.get_water_temp()
         } else {
@@ -137,7 +141,7 @@ impl Controller {
             35.0
         };
         defmt::info!("Temp: {}", temp);
-        for conf in configs.as_ref() {
+        for conf in config.as_ref() {
             let duty_to_set = conf.get_duty(temp, self.max_duty_value);
             trace!("duty {}", duty_to_set);
             self.pwm_timer.set_duty(conf.id.channel(), duty_to_set);
@@ -156,6 +160,7 @@ impl Controller {
             let new_temp = adc_reading_to_temp(adc1_reading);
             if new_temp < 0.0 {
                 self.red_led.set_high();
+                return Err(Error::TempRead);
             } else {
                 self.red_led.set_low();
             }
@@ -163,7 +168,7 @@ impl Controller {
             Ok(())
         } else {
             self.red_led.set_high();
-            Err(Error::Unknown)
+            Err(Error::TempRead)
         }
     }
 
