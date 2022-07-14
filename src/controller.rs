@@ -152,9 +152,13 @@ impl Controller {
     /// red led is turned on in case of error
     pub fn fetch_current_temp(&mut self) -> Result<()> {
         if let Ok(adc1_reading) = self.adc.read(&mut self.water_thermistor) {
-            self.red_led.set_low();
             let old_temp = self.water_temps.swap_remove(0);
             let new_temp = adc_reading_to_temp(adc1_reading);
+            if new_temp < 0.0 {
+                self.red_led.set_high();
+            } else {
+                self.red_led.set_low();
+            }
             self.water_temps.push((old_temp + new_temp) / 2.0).ok();
             Ok(())
         } else {
