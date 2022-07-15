@@ -1,4 +1,4 @@
-20360117651274251
+20361791568420399
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -50260,6 +50260,13 @@ pin header 4-pin CPU fan
 4
 4
 Custom
+LOGO
+
+
+0
+0
+0
+Custom
 PDFN-8_L5.6-W5.2-P1.27-LS6.1-BL
 
 
@@ -69203,7 +69210,7 @@ LQFP QFP
 36
 Package_QFP
 LQFP-44_10x10mm_P0.8mm
-LQFP, 44 Pin (https://www.nxp.com/files-static/common/doc/package_info/98ASS23225W.pdf?&fsrch=1), generated with kicad-footprint-generator ipc_gullwing_generator.py
+LQFP, 44 Pin (https://www.nxp.com/files-static/shared/doc/package_info/98ASS23225W.pdf?&fsrch=1), generated with kicad-footprint-generator ipc_gullwing_generator.py
 LQFP QFP
 0
 44
@@ -69273,14 +69280,14 @@ LQFP QFP
 65
 Package_QFP
 LQFP-64-1EP_10x10mm_P0.5mm_EP6.5x6.5mm
-LQFP, 64 Pin (https://www.nxp.com/files-static/common/doc/package_info/98ARH98426A.pdf), generated with kicad-footprint-generator ipc_gullwing_generator.py
+LQFP, 64 Pin (https://www.nxp.com/files-static/shared/doc/package_info/98ARH98426A.pdf), generated with kicad-footprint-generator ipc_gullwing_generator.py
 LQFP QFP
 0
 90
 65
 Package_QFP
 LQFP-64-1EP_10x10mm_P0.5mm_EP6.5x6.5mm_ThermalVias
-LQFP, 64 Pin (https://www.nxp.com/files-static/common/doc/package_info/98ARH98426A.pdf), generated with kicad-footprint-generator ipc_gullwing_generator.py
+LQFP, 64 Pin (https://www.nxp.com/files-static/shared/doc/package_info/98ARH98426A.pdf), generated with kicad-footprint-generator ipc_gullwing_generator.py
 LQFP QFP
 0
 127
@@ -69427,7 +69434,7 @@ PQFP QFP
 100
 Package_QFP
 PQFP-112_20x20mm_P0.65mm
-PQFP, 112 pins, 20mm sq body, 0.65mm pitch (http://cache.freescale.com/files/common/doc/package_info/98ASS23330W.pdf, http://www.nxp.com/docs/en/application-note/AN4388.pdf)
+PQFP, 112 pins, 20mm sq body, 0.65mm pitch (http://cache.freescale.com/files/shared/doc/package_info/98ASS23330W.pdf, http://www.nxp.com/docs/en/application-note/AN4388.pdf)
 PQFP 112
 0
 112
