@@ -57,8 +57,9 @@ pub struct Controller {
     blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
     water_thermistor: PA4<Analog>,
-    _ambient_thermistor: PA5<Analog>,
+    ambient_thermistor: PA5<Analog>,
     water_temps: Vec<f32, 2>,
+    ambient_temps: Vec<f32, 2>,
 }
 
 impl Controller {
@@ -66,7 +67,7 @@ impl Controller {
         mut timer2: PwmTimer2,
         adc: Adc<ADC1>,
         water_thermistor: PA4<Analog>,
-        _ambient_thermistor: PA5<Analog>,
+        ambient_thermistor: PA5<Analog>,
         fan_enable: PB12<Output<PushPull>>,
         pump_enable: PB13<Output<PushPull>>,
         red_led: PB14<Output<PushPull>>,
@@ -86,7 +87,7 @@ impl Controller {
 
         Self {
             water_thermistor,
-            _ambient_thermistor,
+            ambient_thermistor,
             adc,
             max_duty_value,
             pwm_timer: timer2,
@@ -94,7 +95,8 @@ impl Controller {
             pump_enable,
             red_led,
             blue_led,
-            water_temps: temps,
+            water_temps: temps.clone(),
+            ambient_temps: temps,
         }
     }
 
@@ -152,45 +154,36 @@ impl Controller {
         (self.water_temps[0] + self.water_temps[1]) / 2.0
     }
 
+    pub fn get_ambient_temp(&mut self) -> f32 {
+        (self.ambient_temps[0] + self.ambient_temps[1]) / 2.0
+    }
+
     /// reads temperature in celsius degrees
     /// red led is turned on in case of error
     pub fn fetch_current_temp(&mut self) -> Result<()> {
+        if let Ok(adc0_reading) = self.adc.read(&mut self.ambient_thermistor) {
+            let old_temp = self.ambient_temps.swap_remove(0);
+            let new_temp = adc_reading_to_temp(adc0_reading);
+            self.ambient_temps.push((old_temp + new_temp) / 2.0).ok();
+        }
+
         if let Ok(adc1_reading) = self.adc.read(&mut self.water_thermistor) {
             let old_temp = self.water_temps.swap_remove(0);
             let new_temp = adc_reading_to_temp(adc1_reading);
-            if new_temp < 0.0 {
+            // if thermistor is disconnected, temp reading is in negative
+            // and we want to indicate that
+            if new_temp < 20.0 {
                 self.red_led.set_high();
                 return Err(Error::TempRead);
-            } else {
-                self.red_led.set_low();
             }
             self.water_temps.push((old_temp + new_temp) / 2.0).ok();
+            self.red_led.set_low();
             Ok(())
         } else {
             self.red_led.set_high();
             Err(Error::TempRead)
         }
     }
-
-    // fn set_duty(&mut self, conf: &Config, temp: f32) {
-    //     if conf.enabled {
-    //         // debug!("Setting duty for: {:#?}", conf);
-    //         let duty_percent = if temp <= conf.min_temp {
-    //             0.0 // stop the fan if tem is really low
-    //         } else if temp >= conf.max_temp {
-    //             conf.max_duty
-    //         } else {
-    //             (conf.max_duty - conf.min_duty) * (temp - conf.min_temp)
-    //                 / (conf.max_temp - conf.min_temp)
-    //                 + conf.min_duty
-    //         };
-
-    //         let duty_to_set = self.max_pwm_duty / 100 * duty_percent as u16;
-
-    //         trace!("duty {}", duty_to_set);
-    //         self.pwm_timer.set_duty(conf.id.channel(), duty_to_set)
-    //     }
-    // }
 }
 
 /// converts ADC reading value to degrees celsius

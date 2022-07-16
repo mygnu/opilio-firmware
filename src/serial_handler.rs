@@ -70,7 +70,8 @@ fn process_command<B: UsbBus>(
                 rpm2,
                 rpm3,
                 rpm4,
-                temp1: controller.get_water_temp(),
+                water_temp: controller.get_water_temp(),
+                ambient_temp: controller.get_ambient_temp(),
             };
             let otw = OTW::new(Cmd::Stats, Data::Stats(stats))?.to_vec()?;
             defmt::debug!("stats bytes {}", otw);
