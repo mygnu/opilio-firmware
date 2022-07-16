@@ -1,7 +1,7 @@
 use defmt::Format;
-use opilio_lib::FanId;
+use opilio_lib::ConfId;
 
-const FANS: &[FanId] = &[FanId::F1, FanId::F2, FanId::F3, FanId::F4];
+const FANS: &[ConfId] = &[ConfId::P1, ConfId::F1, ConfId::F2, ConfId::F3];
 
 #[derive(Default, Format)]
 struct Tick {
@@ -24,25 +24,25 @@ impl Tick {
 
 #[derive(Default, Format)]
 pub struct TachoReader {
+    p1: Tick,
     f1: Tick,
     f2: Tick,
     f3: Tick,
-    f4: Tick,
 }
 
 impl TachoReader {
     #[inline(always)]
-    fn get_tick(&mut self, fan_id: &FanId) -> &mut Tick {
+    fn get_tick(&mut self, fan_id: &ConfId) -> &mut Tick {
         match fan_id {
-            FanId::F1 => &mut self.f1,
-            FanId::F2 => &mut self.f2,
-            FanId::F3 => &mut self.f3,
-            FanId::F4 => &mut self.f4,
+            ConfId::P1 => &mut self.p1,
+            ConfId::F1 => &mut self.f1,
+            ConfId::F2 => &mut self.f2,
+            ConfId::F3 => &mut self.f3,
         }
     }
 
     #[inline(always)]
-    pub fn update(&mut self, fan_id: FanId, current: u16) {
+    pub fn update(&mut self, fan_id: ConfId, current: u16) {
         let t = self.get_tick(&fan_id);
 
         defmt::trace!("{}, {}, {}", fan_id, current, t);
@@ -62,7 +62,7 @@ impl TachoReader {
         }
     }
 
-    pub fn rpm(&mut self, fan_id: FanId) -> f32 {
+    pub fn rpm(&mut self, fan_id: ConfId) -> f32 {
         let t = self.get_tick(&fan_id);
 
         if t.elapsed_ticks == 0 {
@@ -75,10 +75,10 @@ impl TachoReader {
     }
     pub fn rpm_data(&mut self) -> (f32, f32, f32, f32) {
         (
-            self.rpm(FanId::F1),
-            self.rpm(FanId::F2),
-            self.rpm(FanId::F3),
-            self.rpm(FanId::F4),
+            self.rpm(ConfId::P1),
+            self.rpm(ConfId::F1),
+            self.rpm(ConfId::F2),
+            self.rpm(ConfId::F3),
         )
     }
 }

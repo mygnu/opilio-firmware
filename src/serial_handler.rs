@@ -41,22 +41,27 @@ fn process_command<B: UsbBus>(
         return Ok(());
     }
 
-    defmt::debug!("Input buf {:?}", buf);
+    defmt::debug!("bytes read: {}", count);
+    defmt::trace!("BUF {:?}", buf);
+    if count == 64 {
+        if let Ok(count) = serial.read(&mut buf[count..]) {
+            defmt::debug!("bytes second read: {}", count);
+            defmt::trace!("BUF {:?}", buf);
+        }
+    }
     let otw_in = OTW::from_bytes(&buf)?;
-    defmt::info!("Received {:?}", otw_in);
+    defmt::debug!("Received {:?}", otw_in.cmd());
     match otw_in.cmd() {
         Cmd::SetConfig => {
             if let Data::Config(new_config) = otw_in.data() {
                 *config = new_config;
                 let bytes: Vec<u8, 3> = to_vec(&Response::Ok)?;
-                defmt::info!("Ok: {}", bytes);
                 serial
                     .write(bytes.as_ref())
                     .map_err(|_| Error::SerialWrite)?;
             }
         }
         Cmd::GetConfig => {
-            defmt::debug!("get config");
             let bytes = OTW::new(Cmd::Config, Data::Config(config.clone()))?
                 .to_vec()?;
             serial
@@ -70,14 +75,12 @@ fn process_command<B: UsbBus>(
                 rpm2,
                 rpm3,
                 rpm4,
-                water_temp: controller.get_water_temp(),
+                liquid_temp: controller.get_liquid_temp(),
                 ambient_temp: controller.get_ambient_temp(),
             };
             let otw = OTW::new(Cmd::Stats, Data::Stats(stats))?.to_vec()?;
-            defmt::debug!("stats bytes {}", otw);
             serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
         }
-
         Cmd::SaveConfig => {
             if let Err(e) = config.save_to_flash(flash) {
                 let otw =

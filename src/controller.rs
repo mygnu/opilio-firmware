@@ -2,7 +2,7 @@ use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
 use heapless::Vec;
 use micromath::F32Ext;
-use opilio_lib::{error::Error, Config, FanId, Result};
+use opilio_lib::{error::Error, ConfId, Config, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PA5, PB12, PB13, PB14, PB15},
@@ -28,16 +28,16 @@ trait ChannelMap {
     fn channel(&self) -> Channel;
 }
 
-impl ChannelMap for FanId {
+impl ChannelMap for ConfId {
     fn channel(&self) -> Channel {
         use Channel::*;
-        use FanId::*;
+        use ConfId::*;
 
         match self {
-            F1 => C1,
-            F2 => C2,
-            F3 => C3,
-            F4 => C4,
+            P1 => C1,
+            F1 => C2,
+            F2 => C3,
+            F3 => C4,
         }
     }
 }
@@ -56,9 +56,9 @@ pub struct Controller {
     red_led: PB14<Output<PushPull>>,
     blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
-    water_thermistor: PA4<Analog>,
+    liquid_thermistor: PA4<Analog>,
     ambient_thermistor: PA5<Analog>,
-    water_temps: Vec<f32, 2>,
+    liquid_temps: Vec<f32, 2>,
     ambient_temps: Vec<f32, 2>,
 }
 
@@ -66,7 +66,7 @@ impl Controller {
     pub fn new(
         mut timer2: PwmTimer2,
         adc: Adc<ADC1>,
-        water_thermistor: PA4<Analog>,
+        liquid_thermistor: PA4<Analog>,
         ambient_thermistor: PA5<Analog>,
         fan_enable: PB12<Output<PushPull>>,
         pump_enable: PB13<Output<PushPull>>,
@@ -86,7 +86,7 @@ impl Controller {
         temps.push(20.0).ok();
 
         Self {
-            water_thermistor,
+            liquid_thermistor,
             ambient_thermistor,
             adc,
             max_duty_value,
@@ -95,7 +95,7 @@ impl Controller {
             pump_enable,
             red_led,
             blue_led,
-            water_temps: temps.clone(),
+            liquid_temps: temps.clone(),
             ambient_temps: temps,
         }
     }
@@ -136,13 +136,12 @@ impl Controller {
     /// and temperature reading
     pub fn adjust_pwm(&mut self, config: &Config) {
         let temp = if self.fetch_current_temp().is_ok() {
-            self.get_water_temp()
+            self.get_liquid_temp()
         } else {
             // assume we are running hot
             // in case thermistor is faulty or unplugged
             35.0
         };
-        defmt::info!("Temp: {}", temp);
         for conf in config.as_ref() {
             let duty_to_set = conf.get_duty(temp, self.max_duty_value);
             trace!("duty {}", duty_to_set);
@@ -150,8 +149,8 @@ impl Controller {
         }
     }
 
-    pub fn get_water_temp(&mut self) -> f32 {
-        (self.water_temps[0] + self.water_temps[1]) / 2.0
+    pub fn get_liquid_temp(&mut self) -> f32 {
+        (self.liquid_temps[0] + self.liquid_temps[1]) / 2.0
     }
 
     pub fn get_ambient_temp(&mut self) -> f32 {
@@ -167,8 +166,8 @@ impl Controller {
             self.ambient_temps.push((old_temp + new_temp) / 2.0).ok();
         }
 
-        if let Ok(adc1_reading) = self.adc.read(&mut self.water_thermistor) {
-            let old_temp = self.water_temps.swap_remove(0);
+        if let Ok(adc1_reading) = self.adc.read(&mut self.liquid_thermistor) {
+            let old_temp = self.liquid_temps.swap_remove(0);
             let new_temp = adc_reading_to_temp(adc1_reading);
             // if thermistor is disconnected, temp reading is in negative
             // and we want to indicate that
@@ -176,7 +175,7 @@ impl Controller {
                 self.red_led.set_high();
                 return Err(Error::TempRead);
             }
-            self.water_temps.push((old_temp + new_temp) / 2.0).ok();
+            self.liquid_temps.push((old_temp + new_temp) / 2.0).ok();
             self.red_led.set_low();
             Ok(())
         } else {

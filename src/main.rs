@@ -10,7 +10,7 @@ mod app {
         controller::Controller, serial_handler, tacho::TachoReader, FlashOps,
         PwmTimer2,
     };
-    use opilio_lib::{Config, FanId, PID, VID};
+    use opilio_lib::{ConfId, Config, PID, VID};
     use stm32f1xx_hal::{
         adc::Adc,
         flash::{FlashExt, Parts},
@@ -108,7 +108,7 @@ mod app {
         defmt::debug!("Stored: {}", config);
 
         // Configure pa4 as an analog input
-        let water_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
+        let liquid_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
         let ambient_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
 
         let pins_a0_a3 = (
@@ -132,7 +132,7 @@ mod app {
         let controller = Controller::new(
             pwm_timer2,
             adc1,
-            water_thermistor,
+            liquid_thermistor,
             ambient_thermistor,
             fan_enable,
             pump_enable,
@@ -206,21 +206,21 @@ mod app {
             let status_register = tim.sr.read();
             if status_register.cc1if().bits() {
                 let current = tim.ccr1.read().bits() as u16;
-                t.update(FanId::F1, current);
+                t.update(ConfId::P1, current);
                 tim.sr.write(|w| w.cc1if().clear_bit());
             } else if status_register.cc2if().bits() {
                 let current = tim.ccr2.read().bits() as u16;
-                t.update(FanId::F2, current);
+                t.update(ConfId::F1, current);
 
                 tim.sr.write(|w| w.cc2if().clear_bit());
             } else if status_register.cc3if().bits() {
                 let current = tim.ccr3.read().bits() as u16;
-                t.update(FanId::F3, current);
+                t.update(ConfId::F2, current);
 
                 tim.sr.write(|w| w.cc3if().clear_bit());
             } else if status_register.cc4if().bits() {
                 let current = tim.ccr4.read().bits() as u16;
-                t.update(FanId::F4, current);
+                t.update(ConfId::F3, current);
                 tim.sr.write(|w| w.cc4if().clear_bit());
             }
         });
@@ -231,7 +231,7 @@ mod app {
     /// triggers every time there is incoming data on usb serial bus
     #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, config, flash, tick, controller, tacho])]
     fn usb_rx0(cx: usb_rx0::Context) {
-        debug!("usb rx");
+        // debug!("usb rx");
         let mut usb_dev = cx.shared.usb_dev;
         let mut serial = cx.shared.serial;
         let mut config = cx.shared.config;
