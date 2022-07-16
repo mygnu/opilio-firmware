@@ -10,7 +10,7 @@ mod app {
         controller::Controller, serial_handler, tacho::TachoReader, FlashOps,
         PwmTimer2,
     };
-    use shared::{Configs, FanId, PID, VID};
+    use opilio_lib::{ConfId, Config, PID, VID};
     use stm32f1xx_hal::{
         adc::Adc,
         flash::{FlashExt, Parts},
@@ -24,8 +24,6 @@ mod app {
 
     use super::timer_setup::timer4_input_setup;
 
-    const TO_STANDBY_S: u32 = 60 * 10;
-
     #[monotonic(binds = SysTick, default = true)]
     type MyMono = Systick<100>; // 100 Hz / 10 ms granularity
 
@@ -33,11 +31,11 @@ mod app {
     struct Shared {
         usb_dev: UsbDevice<'static, UsbBusType>,
         serial: usbd_serial::SerialPort<'static, UsbBusType>,
-        configs: Configs,
+        config: Config,
         flash: Parts,
         controller: Controller,
         tacho: TachoReader,
-        tick: u32,
+        tick: u64,
     }
 
     #[local]
@@ -105,12 +103,13 @@ mod app {
         // Initialize the monotonic (SysTick rate is 48 MHz)
         let mono = Systick::new(cx.core.SYST, 48_000_000);
 
-        let configs = Configs::from_flash(&mut flash);
+        let config = Config::from_flash(&mut flash);
 
-        defmt::debug!("{}", configs);
+        defmt::debug!("Stored: {}", config);
 
         // Configure pa4 as an analog input
-        let thermistor_pin = gpioa.pa4.into_analog(&mut gpioa.crl);
+        let liquid_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
+        let ambient_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
 
         let pins_a0_a3 = (
             gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl),
@@ -133,7 +132,8 @@ mod app {
         let controller = Controller::new(
             pwm_timer2,
             adc1,
-            thermistor_pin,
+            liquid_thermistor,
+            ambient_thermistor,
             fan_enable,
             pump_enable,
             red_led,
@@ -150,7 +150,7 @@ mod app {
             Shared {
                 usb_dev,
                 serial,
-                configs,
+                config,
                 flash,
                 controller,
                 tacho,
@@ -161,33 +161,29 @@ mod app {
         )
     }
 
-    #[task(shared = [controller, configs, tacho, tick])]
+    #[task(shared = [controller, config, tacho, tick])]
     fn periodic(cx: periodic::Context) {
         trace!("periodic");
+        // milliseconds
+        let period = 450_u64;
 
-        (cx.shared.controller, cx.shared.configs, cx.shared.tick).lock(
-            |ctl, configs, tick| {
-                if configs.persistent || *tick < TO_STANDBY_S {
-                    ctl.active_mode();
-                    ctl.adjust_pwm(configs);
-                    *tick = tick.saturating_add(1);
-                } else {
+        (cx.shared.controller, cx.shared.config, cx.shared.tick).lock(
+            |ctl, config, tick| {
+                if *tick > config.sleep_after_ms {
                     ctl.standby_mode();
+                } else {
+                    ctl.active_mode();
+
+                    ctl.adjust_pwm(config);
+                    *tick = tick.saturating_add(period);
                 }
             },
         );
 
-        // let mut tacho = cx.shared.tacho;
-
-        // tacho.lock(|t| {
-        //     defmt::println!("{}", t.rpm_data());
-        // });
-
-        // Periodic ever 1 seconds
-        periodic::spawn_after(ExtU64::secs(1)).ok();
+        periodic::spawn_after(period.millis()).ok();
     }
 
-    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, configs, flash])]
+    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, config, flash])]
     fn usb_tx(_cx: usb_tx::Context) {
         debug!("usb tx");
     }
@@ -195,9 +191,6 @@ mod app {
     #[idle]
     fn idle(_cx: idle::Context) -> ! {
         loop {
-            // Now Wait For Interrupt is used instead of a busy-wait loop
-            // to allow MCU to sleep between interrupts
-            // https://developer.arm.com/documentation/ddi0406/c/Application-Level-Architecture/Instruction-Details/Alphabetical-list-of-instructions/WFI
             rtic::export::nop();
         }
     }
@@ -213,21 +206,21 @@ mod app {
             let status_register = tim.sr.read();
             if status_register.cc1if().bits() {
                 let current = tim.ccr1.read().bits() as u16;
-                t.update(FanId::F1, current);
+                t.update(ConfId::P1, current);
                 tim.sr.write(|w| w.cc1if().clear_bit());
             } else if status_register.cc2if().bits() {
                 let current = tim.ccr2.read().bits() as u16;
-                t.update(FanId::F2, current);
+                t.update(ConfId::F1, current);
 
                 tim.sr.write(|w| w.cc2if().clear_bit());
             } else if status_register.cc3if().bits() {
                 let current = tim.ccr3.read().bits() as u16;
-                t.update(FanId::F3, current);
+                t.update(ConfId::F2, current);
 
                 tim.sr.write(|w| w.cc3if().clear_bit());
             } else if status_register.cc4if().bits() {
                 let current = tim.ccr4.read().bits() as u16;
-                t.update(FanId::F4, current);
+                t.update(ConfId::F3, current);
                 tim.sr.write(|w| w.cc4if().clear_bit());
             }
         });
@@ -236,12 +229,12 @@ mod app {
 
     /// usb_rx0 interrupt handler
     /// triggers every time there is incoming data on usb serial bus
-    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, configs, flash, tick, controller, tacho])]
+    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, config, flash, tick, controller, tacho])]
     fn usb_rx0(cx: usb_rx0::Context) {
-        debug!("usb rx");
+        // debug!("usb rx");
         let mut usb_dev = cx.shared.usb_dev;
         let mut serial = cx.shared.serial;
-        let mut configs = cx.shared.configs;
+        let mut config = cx.shared.config;
         let mut flash = cx.shared.flash;
         let mut tick = cx.shared.tick;
         let mut controller = cx.shared.controller;
@@ -255,15 +248,15 @@ mod app {
         (
             &mut usb_dev,
             &mut serial,
-            &mut configs,
+            &mut config,
             &mut flash,
             &mut controller,
             &mut tacho,
         )
             .lock(
-                |usb_dev, serial, configs, flash, controller, tacho| {
+                |usb_dev, serial, config, flash, controller, tacho| {
                     serial_handler::usb_poll(
-                        usb_dev, serial, configs, flash, controller, tacho,
+                        usb_dev, serial, config, flash, controller, tacho,
                     );
                 },
             );
@@ -282,7 +275,8 @@ mod timer_setup {
     /// good enough to measure fan rpm values
     pub const PRESCALER: u16 = 480;
 
-    /// setup timer (fake consumption of pins so we don't accidentally use them for other purposes)
+    /// setup timer (fake consumption of pins so we don't accidentally use them
+    /// for other purposes)
     pub fn timer4_input_setup(
         _pb6: PB6<Input<Floating>>,
         _pb7: PB7<Input<Floating>>,
@@ -322,7 +316,8 @@ mod timer_setup {
                 .set_bit()
         });
 
-        // configure capture/compare mode resistors and map Timer Input registers
+        // configure capture/compare mode resistors and map Timer Input
+        // registers
         tim.ccmr1_input().modify(|_, w| w.cc1s().ti1().cc2s().ti2());
         tim.ccmr2_input().modify(|_, w| w.cc3s().ti3().cc4s().ti4());
 

@@ -1,17 +1,19 @@
 use heapless::Vec;
-use postcard::{from_bytes, to_vec};
-use shared::{Command, Response, Stats};
+use opilio_lib::{
+    error::Error, Cmd, Data, Response, Result, Stats, MAX_SERIAL_DATA_SIZE, OTW,
+};
+use postcard::to_vec;
 use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice};
 use usbd_serial::SerialPort;
 
-use crate::{controller::Controller, tacho::TachoReader, Configs, FlashOps};
+use crate::{controller::Controller, tacho::TachoReader, Config, FlashOps};
 
 #[inline(always)]
 pub fn usb_poll<B: UsbBus>(
     usb_dev: &mut UsbDevice<'static, B>,
     serial: &mut SerialPort<'static, B>,
-    configs: &mut Configs,
+    config: &mut Config,
     flash: &mut flash::Parts,
     controller: &mut Controller,
     tacho: &mut TachoReader,
@@ -19,73 +21,88 @@ pub fn usb_poll<B: UsbBus>(
     if !usb_dev.poll(&mut [serial]) {
         return;
     }
-    if let Err(e) = process_command(serial, configs, tacho, controller, flash) {
-        defmt::error!("{}", e);
+    if let Err(e) = process_command(serial, config, tacho, controller, flash) {
+        defmt::trace!("usb_poll error: {}", e);
     }
 }
 
 #[inline(always)]
 fn process_command<B: UsbBus>(
     serial: &mut SerialPort<'static, B>,
-    configs: &mut Configs,
+    config: &mut Config,
     tacho: &mut TachoReader,
     controller: &mut Controller,
     flash: &mut flash::Parts,
-) -> shared::Result<()> {
-    let mut buf = [0u8; 48];
-    let count = serial
-        .read(&mut buf)
-        .map_err(|_| shared::Error::SerialRead)?;
+) -> Result<()> {
+    let mut buf = [0u8; MAX_SERIAL_DATA_SIZE];
+    let count = serial.read(&mut buf).map_err(|_| Error::SerialRead)?;
 
     if count == 0 {
         return Ok(());
     }
 
-    defmt::debug!("input buf {:?}", buf);
-    let command = from_bytes::<Command>(&buf[0..1])?;
-    match command {
-        Command::SetConfig => {
-            if let Ok(new_config) = from_bytes(&buf[2..]) {
-                configs.set(new_config);
+    defmt::debug!("bytes read: {}", count);
+    defmt::trace!("BUF {:?}", buf);
+    if count == 64 {
+        if let Ok(count) = serial.read(&mut buf[count..]) {
+            defmt::debug!("bytes second read: {}", count);
+            defmt::trace!("BUF {:?}", buf);
+        }
+    }
+    let otw_in = OTW::from_bytes(&buf)?;
+    defmt::debug!("Received {:?}", otw_in.cmd());
+    match otw_in.cmd() {
+        Cmd::SetConfig => {
+            if let Data::Config(new_config) = otw_in.data() {
+                *config = new_config;
                 let bytes: Vec<u8, 3> = to_vec(&Response::Ok)?;
-                defmt::info!("Ok: {}", bytes);
                 serial
                     .write(bytes.as_ref())
-                    .map_err(|_| shared::Error::SerialWrite)?;
+                    .map_err(|_| Error::SerialWrite)?;
             }
         }
-        Command::GetConfig => {
-            if let Ok(id) = from_bytes(&buf[2..]) {
-                defmt::debug!("id {:?}", id);
-                if let Some(config) = configs.get(id) {
-                    defmt::debug!("{:?}", config);
-                    let bytes = config.to_vec()?;
-                    defmt::debug!("config bytes {}", bytes);
-                    serial
-                        .write(bytes.as_ref())
-                        .map_err(|_| shared::Error::SerialWrite)?;
-                }
-            }
-        }
-        Command::GetStats => {
-            let (f1, f2, f3, f4) = tacho.rpm_data();
-            let stats = Stats {
-                f1,
-                f2,
-                f3,
-                f4,
-                t1: controller.get_temp().unwrap_or(0.0),
-            };
-            let bytes = stats.to_vec()?;
-            defmt::debug!("stats bytes {}", bytes);
+        Cmd::GetConfig => {
+            let bytes = OTW::new(Cmd::Config, Data::Config(config.clone()))?
+                .to_vec()?;
             serial
                 .write(bytes.as_ref())
-                .map_err(|_| shared::Error::SerialWrite)?;
+                .map_err(|_| Error::SerialWrite)?;
         }
-
-        Command::SaveConfig => {
-            configs.save_to_flash(flash)?;
+        Cmd::GetStats => {
+            let (rpm1, rpm2, rpm3, rpm4) = tacho.rpm_data();
+            let stats = Stats {
+                rpm1,
+                rpm2,
+                rpm3,
+                rpm4,
+                liquid_temp: controller.get_liquid_temp(),
+                ambient_temp: controller.get_ambient_temp(),
+            };
+            let otw = OTW::new(Cmd::Stats, Data::Stats(stats))?.to_vec()?;
+            serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
         }
+        Cmd::SaveConfig => {
+            if let Err(e) = config.save_to_flash(flash) {
+                let otw =
+                    OTW::new(Cmd::Result, Data::Result(Response::Error(e)))?
+                        .to_vec()?;
+                serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
+                return Err(e);
+            } else {
+                let otw = OTW::new(Cmd::Result, Data::Result(Response::Ok))?
+                    .to_vec()?;
+                serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
+            }
+        }
+        Cmd::SetStandby => {
+            if let Data::U64(sleep_after) = otw_in.data() {
+                config.sleep_after_ms = sleep_after;
+                let otw = OTW::new(Cmd::Result, Data::Result(Response::Ok))?
+                    .to_vec()?;
+                serial.write(otw.as_ref()).map_err(|_| Error::SerialWrite)?;
+            }
+        }
+        Cmd::Stats | Cmd::Config | Cmd::Result => (),
     };
 
     Ok(())

@@ -1,8 +1,8 @@
 {
   "board": {
-    "active_layer": 0,
+    "active_layer": 36,
     "active_layer_preset": "",
-    "auto_track_width": true,
+    "auto_track_width": false,
     "hidden_nets": [],
     "high_contrast_mode": 0,
     "net_color_mode": 1,
@@ -62,11 +62,11 @@
       35,
       36
     ],
-    "visible_layers": "7f9ffff_00000001",
+    "visible_layers": "ff9ffff_ffffffff",
     "zone_display_mode": 1
   },
   "meta": {
-    "filename": "opilio3.kicad_prl",
+    "filename": "opilio3.1.kicad_prl",
     "version": 3
   },
   "project": {

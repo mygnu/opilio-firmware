@@ -9,9 +9,8 @@ use core::{
 
 // global logger
 use defmt_rtt as _;
+use opilio_lib::{error::Error, Config, Result};
 use panic_probe as _;
-use postcard::{from_bytes, to_vec};
-use shared::{Configs, Result};
 use stm32f1xx_hal::{
     flash::{self, FlashSize, SectorSize, SZ_1K},
     gpio::{
@@ -63,11 +62,11 @@ pub type PwmTimer2 = PwmHz<
 >;
 
 pub trait FlashOps {
-    fn from_flash(flash: &mut flash::Parts) -> Configs;
+    fn from_flash(flash: &mut flash::Parts) -> Config;
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()>;
 }
 
-impl FlashOps for Configs {
+impl FlashOps for Config {
     fn from_flash(flash: &mut flash::Parts) -> Self {
         let writer = get_writer(flash);
 
@@ -75,32 +74,32 @@ impl FlashOps for Configs {
             Ok(it) => it,
             _ => {
                 defmt::error!("failed to read flash");
-                return Configs::default();
+                return Config::default();
             }
         };
 
-        if let Ok(configs) = from_bytes::<Configs>(bytes) {
-            if configs.is_valid() {
-                return configs;
+        if let Ok(config) = Config::from_bytes(bytes) {
+            if config.is_valid() {
+                return config;
             }
         }
-        Configs::default()
+        Config::default()
     }
 
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()> {
         let mut writer = get_writer(flash);
 
-        let buff = to_vec::<Configs, 88>(&self)?;
+        let buff = self.to_vec()?;
         defmt::debug!("{}", self);
         defmt::debug!("Saving {} to flash", buff);
         defmt::debug!("length {}", buff.len());
         writer
             .page_erase(FLASH_START_OFFSET)
-            .map_err(|_| shared::Error::FlashErase)?;
+            .map_err(|_| Error::FlashErase)?;
 
         writer
             .write(FLASH_START_OFFSET, buff.deref())
-            .map_err(|_| shared::Error::FlashWrite)?;
+            .map_err(|_| Error::FlashWrite)?;
         Ok(())
     }
 }

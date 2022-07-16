@@ -1,2 +1,9 @@
 /target
 .vscode
+
+**auto_save**
+**autosave**
+gerber**
+*bak
+*.zip
+*-backups
