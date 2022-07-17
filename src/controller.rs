@@ -135,15 +135,21 @@ impl Controller {
     /// Adjust PWM on all channels according to the configuration
     /// and temperature reading
     pub fn adjust_pwm(&mut self, config: &Config) {
-        let temp = if self.fetch_current_temp().is_ok() {
-            self.get_liquid_temp()
+        let (liquid_temp, ambient_temp) = if self.fetch_current_temps().is_ok()
+        {
+            (self.get_liquid_temp(), self.get_ambient_temp())
         } else {
             // assume we are running hot
             // in case thermistor is faulty or unplugged
-            35.0
+            (35.0, 20.0)
         };
         for setting in &config.settings {
-            let duty_to_set = setting.get_duty(temp, self.max_duty_value);
+            let duty_to_set =
+                if liquid_temp > ambient_temp && setting.id != Id::P1 {
+                    setting.get_duty(liquid_temp, self.max_duty_value)
+                } else {
+                    0
+                };
             trace!("duty {}", duty_to_set);
             self.pwm_timer.set_duty(setting.id.channel(), duty_to_set);
         }
@@ -159,7 +165,7 @@ impl Controller {
 
     /// reads temperature in celsius degrees
     /// red led is turned on in case of error
-    pub fn fetch_current_temp(&mut self) -> Result<()> {
+    pub fn fetch_current_temps(&mut self) -> Result<()> {
         if let Ok(adc0_reading) = self.adc.read(&mut self.ambient_thermistor) {
             let old_temp = self.ambient_temps.swap_remove(0);
             let new_temp = adc_reading_to_temp(adc0_reading);
