@@ -1,0 +1,40 @@
+[default.general]
+# The chip name of the chip to be debugged.
+chip = "STM32F103C8"
+
+# A list of chip descriptions to be loaded during runtime.
+chip_descriptions = []
+# The default log level to be used. Possible values are one of:
+#   "OFF", "ERROR", "WARN", "INFO", "DEBUG", "TRACE"
+log_level = "DEBUG"
+# Use this flag to assert the nreset & ntrst pins during attaching the probe to the chip.
+connect_under_reset = false
+
+
+[default.flashing]
+# Whether or not the target should be flashed.
+enabled = false
+# Whether or not the target should be halted after reset.
+# DEPRECATED, moved to reset section
+halt_afterwards = false
+# Whether or not bytes erased but not rewritten with data from the ELF
+# should be restored with their contents before erasing.
+restore_unwritten_bytes = false
+# The path where an SVG of the assembled flash layout should be written to.
+# flash_layout_output_path = "out.svg"
+# Triggers a full chip erase instead of a page by page erase.
+do_chip_erase = false
+
+
+[default.rtt]
+enabled = true
+channels = [
+    { up = 0, name = "defmt_rtt", format = "Defmt" },
+]
+
+# Whether timestamps in the RTTUI are enabled
+show_timestamps = true
+# Whether to save rtt history buffer on exit.
+log_enabled = true
+# Where to save rtt history buffer relative to manifest path.
+log_path = "./logs"
