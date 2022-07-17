@@ -2,7 +2,7 @@ use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
 use heapless::Vec;
 use micromath::F32Ext;
-use opilio_lib::{error::Error, ConfId, Config, Result};
+use opilio_lib::{error::Error, Config, Id, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{gpioa::PA4, Analog, Output, PushPull, PA5, PB12, PB13, PB14, PB15},
@@ -28,10 +28,10 @@ trait ChannelMap {
     fn channel(&self) -> Channel;
 }
 
-impl ChannelMap for ConfId {
+impl ChannelMap for Id {
     fn channel(&self) -> Channel {
         use Channel::*;
-        use ConfId::*;
+        use Id::*;
 
         match self {
             P1 => C1,
@@ -142,10 +142,10 @@ impl Controller {
             // in case thermistor is faulty or unplugged
             35.0
         };
-        for conf in config.as_ref() {
-            let duty_to_set = conf.get_duty(temp, self.max_duty_value);
+        for setting in &config.settings {
+            let duty_to_set = setting.get_duty(temp, self.max_duty_value);
             trace!("duty {}", duty_to_set);
-            self.pwm_timer.set_duty(conf.id.channel(), duty_to_set);
+            self.pwm_timer.set_duty(setting.id.channel(), duty_to_set);
         }
     }
 

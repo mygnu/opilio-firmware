@@ -2,10 +2,7 @@
 pub mod controller;
 pub mod serial_handler;
 pub mod tacho;
-use core::{
-    ops::Deref,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use core::ops::Deref;
 
 // global logger
 use defmt_rtt as _;
@@ -34,13 +31,13 @@ fn panic() -> ! {
     cortex_m::asm::udf()
 }
 
-static COUNT: AtomicUsize = AtomicUsize::new(0);
-defmt::timestamp!("{=usize}", {
-    // NOTE(no-CAS) `timestamps` runs with interrupts disabled
-    let n = COUNT.load(Ordering::Relaxed);
-    COUNT.store(n + 1, Ordering::Relaxed);
-    n
-});
+// static COUNT: AtomicUsize = AtomicUsize::new(0);
+// defmt::timestamp!("{=usize}", {
+//     // NOTE(no-CAS) `timestamps` runs with interrupts disabled
+//     let n = COUNT.load(Ordering::Relaxed);
+//     COUNT.store(n + 1, Ordering::Relaxed);
+//     n
+// });
 
 /// Terminates the application and makes `probe-run` exit with exit-code = 0
 pub fn exit() -> ! {

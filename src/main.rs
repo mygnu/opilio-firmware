@@ -7,10 +7,10 @@ mod app {
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
     use opilio_firmware::{
-        controller::Controller, serial_handler, tacho::TachoReader, FlashOps,
-        PwmTimer2,
+        controller::Controller, serial_handler::UsbHandler, tacho::TachoReader,
+        FlashOps, PwmTimer2,
     };
-    use opilio_lib::{ConfId, Config, PID, VID};
+    use opilio_lib::{Config, Id, PID, VID};
     use stm32f1xx_hal::{
         adc::Adc,
         flash::{FlashExt, Parts},
@@ -29,8 +29,7 @@ mod app {
 
     #[shared]
     struct Shared {
-        usb_dev: UsbDevice<'static, UsbBusType>,
-        serial: usbd_serial::SerialPort<'static, UsbBusType>,
+        usb_handler: UsbHandler<UsbBusType>,
         config: Config,
         flash: Parts,
         controller: Controller,
@@ -100,6 +99,8 @@ mod app {
         .device_class(usbd_serial::USB_CLASS_CDC)
         .build();
 
+        let usb_handler = UsbHandler::new(usb_dev, serial);
+
         // Initialize the monotonic (SysTick rate is 48 MHz)
         let mono = Systick::new(cx.core.SYST, 48_000_000);
 
@@ -148,8 +149,7 @@ mod app {
 
         (
             Shared {
-                usb_dev,
-                serial,
+                usb_handler,
                 config,
                 flash,
                 controller,
@@ -169,7 +169,7 @@ mod app {
 
         (cx.shared.controller, cx.shared.config, cx.shared.tick).lock(
             |ctl, config, tick| {
-                if *tick > config.sleep_after_ms {
+                if *tick > config.general.sleep_after as u64 * 1000 {
                     ctl.standby_mode();
                 } else {
                     ctl.active_mode();
@@ -183,7 +183,7 @@ mod app {
         periodic::spawn_after(period.millis()).ok();
     }
 
-    #[task(binds = USB_HP_CAN_TX, shared = [usb_dev, serial, config, flash])]
+    #[task(binds = USB_HP_CAN_TX, shared = [])]
     fn usb_tx(_cx: usb_tx::Context) {
         debug!("usb tx");
     }
@@ -206,21 +206,21 @@ mod app {
             let status_register = tim.sr.read();
             if status_register.cc1if().bits() {
                 let current = tim.ccr1.read().bits() as u16;
-                t.update(ConfId::P1, current);
+                t.update(Id::P1, current);
                 tim.sr.write(|w| w.cc1if().clear_bit());
             } else if status_register.cc2if().bits() {
                 let current = tim.ccr2.read().bits() as u16;
-                t.update(ConfId::F1, current);
+                t.update(Id::F1, current);
 
                 tim.sr.write(|w| w.cc2if().clear_bit());
             } else if status_register.cc3if().bits() {
                 let current = tim.ccr3.read().bits() as u16;
-                t.update(ConfId::F2, current);
+                t.update(Id::F2, current);
 
                 tim.sr.write(|w| w.cc3if().clear_bit());
             } else if status_register.cc4if().bits() {
                 let current = tim.ccr4.read().bits() as u16;
-                t.update(ConfId::F3, current);
+                t.update(Id::F3, current);
                 tim.sr.write(|w| w.cc4if().clear_bit());
             }
         });
@@ -229,11 +229,10 @@ mod app {
 
     /// usb_rx0 interrupt handler
     /// triggers every time there is incoming data on usb serial bus
-    #[task(binds = USB_LP_CAN_RX0, shared = [usb_dev, serial, config, flash, tick, controller, tacho])]
+    #[task(binds = USB_LP_CAN_RX0, shared = [usb_handler, config, flash, tick, controller, tacho])]
     fn usb_rx0(cx: usb_rx0::Context) {
         // debug!("usb rx");
-        let mut usb_dev = cx.shared.usb_dev;
-        let mut serial = cx.shared.serial;
+        let mut usb_handler = cx.shared.usb_handler;
         let mut config = cx.shared.config;
         let mut flash = cx.shared.flash;
         let mut tick = cx.shared.tick;
@@ -246,20 +245,15 @@ mod app {
         });
 
         (
-            &mut usb_dev,
-            &mut serial,
+            &mut usb_handler,
             &mut config,
             &mut flash,
             &mut controller,
             &mut tacho,
         )
-            .lock(
-                |usb_dev, serial, config, flash, controller, tacho| {
-                    serial_handler::usb_poll(
-                        usb_dev, serial, config, flash, controller, tacho,
-                    );
-                },
-            );
+            .lock(|usb_handler, config, flash, controller, tacho| {
+                usb_handler.poll(config, flash, controller, tacho);
+            });
     }
 }
 
