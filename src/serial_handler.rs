@@ -69,12 +69,12 @@ fn process_command<B: UsbBus>(
                 .map_err(|_| Error::SerialWrite)?;
         }
         Cmd::GetStats => {
-            let (rpm1, rpm2, rpm3, rpm4) = tacho.rpm_data();
+            let (pump1_rpm, fan1_rpm, fan2_rpm, fan3_rpm) = tacho.rpm_data();
             let stats = Stats {
-                rpm1,
-                rpm2,
-                rpm3,
-                rpm4,
+                pump1_rpm,
+                fan1_rpm,
+                fan2_rpm,
+                fan3_rpm,
                 liquid_temp: controller.get_liquid_temp(),
                 ambient_temp: controller.get_ambient_temp(),
             };
