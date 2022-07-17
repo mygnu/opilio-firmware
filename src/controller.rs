@@ -144,8 +144,10 @@ impl Controller {
             (35.0, 20.0)
         };
         for setting in &config.settings {
+            // turn off fans if ambient_temp is hotter, except for the pump, it
+            // should never be turned off
             let duty_to_set =
-                if liquid_temp > ambient_temp && setting.id != Id::P1 {
+                if liquid_temp > ambient_temp || setting.id == Id::P1 {
                     setting.get_duty(liquid_temp, self.max_duty_value)
                 } else {
                     0
