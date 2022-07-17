@@ -10,7 +10,7 @@ mod app {
         controller::Controller, serial_handler::UsbHandler, tacho::TachoReader,
         FlashOps, PwmTimer2,
     };
-    use opilio_lib::{ConfId, Config, PID, VID};
+    use opilio_lib::{Config, Id, PID, VID};
     use stm32f1xx_hal::{
         adc::Adc,
         flash::{FlashExt, Parts},
@@ -169,7 +169,7 @@ mod app {
 
         (cx.shared.controller, cx.shared.config, cx.shared.tick).lock(
             |ctl, config, tick| {
-                if *tick > config.sleep_after_ms {
+                if *tick > config.general.sleep_after as u64 * 1000 {
                     ctl.standby_mode();
                 } else {
                     ctl.active_mode();
@@ -206,21 +206,21 @@ mod app {
             let status_register = tim.sr.read();
             if status_register.cc1if().bits() {
                 let current = tim.ccr1.read().bits() as u16;
-                t.update(ConfId::P1, current);
+                t.update(Id::P1, current);
                 tim.sr.write(|w| w.cc1if().clear_bit());
             } else if status_register.cc2if().bits() {
                 let current = tim.ccr2.read().bits() as u16;
-                t.update(ConfId::F1, current);
+                t.update(Id::F1, current);
 
                 tim.sr.write(|w| w.cc2if().clear_bit());
             } else if status_register.cc3if().bits() {
                 let current = tim.ccr3.read().bits() as u16;
-                t.update(ConfId::F2, current);
+                t.update(Id::F2, current);
 
                 tim.sr.write(|w| w.cc3if().clear_bit());
             } else if status_register.cc4if().bits() {
                 let current = tim.ccr4.read().bits() as u16;
-                t.update(ConfId::F3, current);
+                t.update(Id::F3, current);
                 tim.sr.write(|w| w.cc4if().clear_bit());
             }
         });

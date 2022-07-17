@@ -44,7 +44,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
         controller: &mut Controller,
         flash: &mut flash::Parts,
     ) -> Result<()> {
-        let mut buf = [0u8; MAX_SERIAL_DATA_SIZE];
+        let mut buf = [0u8; 128];
         let mut cursor =
             self.serial.read(&mut buf).map_err(|_| Error::SerialRead)?;
 
@@ -52,7 +52,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
             return Ok(());
         }
         defmt::debug!("bytes read: {}", cursor);
-        defmt::debug!("BUF {=[?]}", buf);
+        defmt::trace!("BUF {=[?]}", buf);
         loop {
             match self.serial.read(&mut buf[cursor..]) {
                 Ok(count) => {
@@ -69,15 +69,12 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
             }
         }
 
-        defmt::debug!("bytes second read: {}", cursor);
-        defmt::debug!("BUF {=[?]}", buf);
-
         let otw_in = OTW::from_bytes(&buf)?;
         defmt::debug!("Received {:?}", otw_in.cmd());
         match otw_in.cmd() {
-            Cmd::SetConfig => {
-                if let Data::Config(new_config) = otw_in.data() {
-                    *config = new_config;
+            Cmd::UploadSetting => {
+                if let Data::Setting(setting) = otw_in.data() {
+                    config.set(setting);
                     let bytes: Vec<u8, 3> = to_vec(&Response::Ok)?;
                     self.serial
                         .write(bytes.as_ref())
@@ -88,9 +85,14 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                 let bytes =
                     OTW::new(Cmd::Config, Data::Config(config.clone()))?
                         .to_vec()?;
-                self.serial
-                    .write(bytes.as_ref())
-                    .map_err(|_| Error::SerialWrite)?;
+                let total = (&bytes).len();
+                let mut sent = 0;
+                while sent < total {
+                    sent += self
+                        .serial
+                        .write(bytes.as_ref())
+                        .map_err(|_| Error::SerialWrite)?;
+                }
             }
             Cmd::GetStats => {
                 let (pump1_rpm, fan1_rpm, fan2_rpm, fan3_rpm) =
@@ -128,9 +130,9 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
-            Cmd::SetStandby => {
-                if let Data::U64(sleep_after) = otw_in.data() {
-                    config.sleep_after_ms = sleep_after;
+            Cmd::UploadGeneral => {
+                if let Data::General(general) = otw_in.data() {
+                    config.general = general;
                     let otw =
                         OTW::new(Cmd::Result, Data::Result(Response::Ok))?
                             .to_vec()?;
