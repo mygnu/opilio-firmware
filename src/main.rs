@@ -183,10 +183,10 @@ mod app {
         periodic::spawn_after(period.millis()).ok();
     }
 
-    #[task(binds = USB_HP_CAN_TX, shared = [])]
-    fn usb_tx(_cx: usb_tx::Context) {
-        debug!("usb tx");
-    }
+    // #[task(binds = USB_HP_CAN_TX, shared = [])]
+    // fn usb_tx(_cx: usb_tx::Context) {
+    //     debug!("usb tx");
+    // }
 
     #[idle]
     fn idle(_cx: idle::Context) -> ! {
@@ -231,7 +231,7 @@ mod app {
     /// triggers every time there is incoming data on usb serial bus
     #[task(binds = USB_LP_CAN_RX0, shared = [usb_handler, config, flash, tick, controller, tacho])]
     fn usb_rx0(cx: usb_rx0::Context) {
-        // debug!("usb rx");
+        debug!("usb rx");
         let mut usb_handler = cx.shared.usb_handler;
         let mut config = cx.shared.config;
         let mut flash = cx.shared.flash;

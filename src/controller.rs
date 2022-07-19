@@ -158,24 +158,26 @@ impl Controller {
     }
 
     pub fn get_liquid_temp(&mut self) -> f32 {
-        (self.liquid_temps[0] + self.liquid_temps[1]) / 2.0
+        (self.liquid_temps[0] + self.liquid_temps.get(1).unwrap_or(&0.0)) / 2.0
     }
 
     pub fn get_ambient_temp(&mut self) -> f32 {
-        (self.ambient_temps[0] + self.ambient_temps[1]) / 2.0
+        (self.ambient_temps[0] + self.ambient_temps.get(1).unwrap_or(&0.0))
+            / 2.0
     }
 
     /// reads temperature in celsius degrees
     /// red led is turned on in case of error
     pub fn fetch_current_temps(&mut self) -> Result<()> {
         if let Ok(adc0_reading) = self.adc.read(&mut self.ambient_thermistor) {
-            let old_temp = self.ambient_temps.swap_remove(0);
             let new_temp = adc_reading_to_temp(adc0_reading);
-            self.ambient_temps.push((old_temp + new_temp) / 2.0).ok();
+            let old_temp = self.ambient_temps[0];
+            let new_temp = (old_temp + new_temp) / 2.0;
+            self.ambient_temps.swap_remove(0);
+            self.ambient_temps.push(new_temp).ok();
         }
 
         if let Ok(adc1_reading) = self.adc.read(&mut self.liquid_thermistor) {
-            let old_temp = self.liquid_temps.swap_remove(0);
             let new_temp = adc_reading_to_temp(adc1_reading);
             // if thermistor is disconnected, temp reading is in negative
             // and we want to indicate that
@@ -183,7 +185,11 @@ impl Controller {
                 self.red_led.set_high();
                 return Err(Error::TempRead);
             }
-            self.liquid_temps.push((old_temp + new_temp) / 2.0).ok();
+            let old_temp = self.liquid_temps[0];
+            let new_temp = (old_temp + new_temp) / 2.0;
+            self.liquid_temps.swap_remove(0);
+            self.liquid_temps.push(new_temp).ok();
+
             self.red_led.set_low();
             Ok(())
         } else {
