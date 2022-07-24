@@ -1,6 +1,7 @@
-use heapless::Vec;
-use opilio_lib::{error::Error, Cmd, Data, Response, Result, Stats, OTW};
-use postcard::to_vec;
+use opilio_lib::{
+    error::Error, Cmd, Data, DataRef, Response, Result, Stats, OTW,
+};
+
 use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice, UsbError};
 use usbd_serial::SerialPort;
@@ -68,21 +69,19 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
         }
 
         let otw_in = OTW::from_bytes(&buf)?;
-        defmt::debug!("Received {:?}", otw_in.cmd());
-        match otw_in.cmd() {
+        defmt::debug!("Received {:?}", otw_in.cmd);
+        match otw_in.cmd {
             Cmd::UploadSetting => {
-                if let Data::Setting(setting) = otw_in.data() {
+                if let Data::Setting(setting) = otw_in.data {
                     config.set(setting);
-                    let bytes: Vec<u8, 3> = to_vec(&Response::Ok)?;
                     self.serial
-                        .write(bytes.as_ref())
+                        .write(OTW::serialised_ok())
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
             Cmd::GetConfig => {
                 let bytes =
-                    OTW::new(Cmd::Config, Data::Config(config.clone()))?
-                        .to_vec()?;
+                    OTW::serialised_vec(Cmd::Config, DataRef::Config(&config))?;
                 let total = (&bytes).len();
                 let mut sent = 0;
                 while sent < total {
@@ -103,39 +102,34 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                     liquid_temp: controller.get_liquid_temp(),
                     ambient_temp: controller.get_ambient_temp(),
                 };
-                let otw = OTW::new(Cmd::Stats, Data::Stats(stats))?.to_vec()?;
+                let otw =
+                    OTW::serialised_vec(Cmd::Stats, DataRef::Stats(&stats))?;
                 self.serial
                     .write(otw.as_ref())
                     .map_err(|_| Error::SerialWrite)?;
             }
             Cmd::SaveConfig => {
                 if let Err(e) = config.save_to_flash(flash) {
-                    let otw = OTW::new(
+                    let otw = OTW::serialised_vec(
                         Cmd::Result,
-                        Data::Result(Response::Error(e)),
-                    )?
-                    .to_vec()?;
+                        DataRef::Result(&Response::Error(e)),
+                    )?;
                     self.serial
                         .write(otw.as_ref())
                         .map_err(|_| Error::SerialWrite)?;
                     return Err(e);
                 } else {
-                    let otw =
-                        OTW::new(Cmd::Result, Data::Result(Response::Ok))?
-                            .to_vec()?;
                     self.serial
-                        .write(otw.as_ref())
+                        .write(OTW::serialised_ok())
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
             Cmd::UploadGeneral => {
-                if let Data::General(general) = otw_in.data() {
+                if let Data::General(general) = otw_in.data {
                     config.general = general;
-                    let otw =
-                        OTW::new(Cmd::Result, Data::Result(Response::Ok))?
-                            .to_vec()?;
+
                     self.serial
-                        .write(otw.as_ref())
+                        .write(OTW::serialised_ok())
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }

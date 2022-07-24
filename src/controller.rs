@@ -1,6 +1,5 @@
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, trace};
-use heapless::Vec;
 use micromath::F32Ext;
 use opilio_lib::{error::Error, Config, Id, Result};
 use stm32f1xx_hal::{
@@ -58,8 +57,8 @@ pub struct Controller {
     pwm_timer: PwmTimer2,
     liquid_thermistor: PA4<Analog>,
     ambient_thermistor: PA5<Analog>,
-    liquid_temps: Vec<f32, 2>,
-    ambient_temps: Vec<f32, 2>,
+    liquid_temp: f32,
+    ambient_temp: f32,
 }
 
 impl Controller {
@@ -81,9 +80,6 @@ impl Controller {
             timer2.enable(channel);
             timer2.set_duty(channel, min_duty);
         }
-        let mut temps = Vec::new();
-        temps.push(20.0).ok();
-        temps.push(20.0).ok();
 
         Self {
             liquid_thermistor,
@@ -95,8 +91,8 @@ impl Controller {
             pump_enable,
             red_led,
             blue_led,
-            liquid_temps: temps.clone(),
-            ambient_temps: temps,
+            liquid_temp: 22.0,
+            ambient_temp: 22.0,
         }
     }
 
@@ -158,12 +154,11 @@ impl Controller {
     }
 
     pub fn get_liquid_temp(&mut self) -> f32 {
-        (self.liquid_temps[0] + self.liquid_temps.get(1).unwrap_or(&0.0)) / 2.0
+        self.liquid_temp
     }
 
     pub fn get_ambient_temp(&mut self) -> f32 {
-        (self.ambient_temps[0] + self.ambient_temps.get(1).unwrap_or(&0.0))
-            / 2.0
+        self.ambient_temp
     }
 
     /// reads temperature in celsius degrees
@@ -171,24 +166,18 @@ impl Controller {
     pub fn fetch_current_temps(&mut self) -> Result<()> {
         if let Ok(adc0_reading) = self.adc.read(&mut self.ambient_thermistor) {
             let new_temp = adc_reading_to_temp(adc0_reading);
-            let old_temp = self.ambient_temps[0];
-            let new_temp = (old_temp + new_temp) / 2.0;
-            self.ambient_temps.swap_remove(0);
-            self.ambient_temps.push(new_temp).ok();
+            self.ambient_temp = (self.ambient_temp + new_temp) / 2.0;
         }
 
         if let Ok(adc1_reading) = self.adc.read(&mut self.liquid_thermistor) {
             let new_temp = adc_reading_to_temp(adc1_reading);
             // if thermistor is disconnected, temp reading is in negative
             // and we want to indicate that
-            if new_temp < 20.0 {
+            if new_temp < -20.0 {
                 self.red_led.set_high();
                 return Err(Error::TempRead);
             }
-            let old_temp = self.liquid_temps[0];
-            let new_temp = (old_temp + new_temp) / 2.0;
-            self.liquid_temps.swap_remove(0);
-            self.liquid_temps.push(new_temp).ok();
+            self.liquid_temp = (self.liquid_temp + new_temp) / 2.0;
 
             self.red_led.set_low();
             Ok(())
