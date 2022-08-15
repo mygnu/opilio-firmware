@@ -4,7 +4,9 @@ use micromath::F32Ext;
 use opilio_lib::{error::Error, Config, Id, Result};
 use stm32f1xx_hal::{
     adc::Adc,
-    gpio::{gpioa::PA4, Analog, Output, PushPull, PA5, PB12, PB13, PB14, PB15},
+    gpio::{
+        gpioa::PA4, Analog, Output, PushPull, PA5, PB11, PB12, PB13, PB14, PB15,
+    },
     pac::ADC1,
     timer::Channel,
 };
@@ -52,11 +54,12 @@ pub struct Controller {
     max_duty_value: u16,
     fan_enable: PB12<Output<PushPull>>,
     pump_enable: PB13<Output<PushPull>>,
+    buzzer: PB11<Output<PushPull>>,
     red_led: PB14<Output<PushPull>>,
     blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
-    liquid_thermistor: PA4<Analog>,
-    ambient_thermistor: PA5<Analog>,
+    liquid_thermistor: PA5<Analog>,
+    ambient_thermistor: PA4<Analog>,
     liquid_temp: f32,
     ambient_temp: f32,
 }
@@ -65,10 +68,11 @@ impl Controller {
     pub fn new(
         mut timer2: PwmTimer2,
         adc: Adc<ADC1>,
-        liquid_thermistor: PA4<Analog>,
-        ambient_thermistor: PA5<Analog>,
+        liquid_thermistor: PA5<Analog>,
+        ambient_thermistor: PA4<Analog>,
         fan_enable: PB12<Output<PushPull>>,
         pump_enable: PB13<Output<PushPull>>,
+        buzzer: PB11<Output<PushPull>>,
         red_led: PB14<Output<PushPull>>,
         blue_led: PB15<Output<PushPull>>,
     ) -> Self {
@@ -89,6 +93,7 @@ impl Controller {
             pwm_timer: timer2,
             fan_enable,
             pump_enable,
+            buzzer,
             red_led,
             blue_led,
             liquid_temp: 22.0,
@@ -175,14 +180,17 @@ impl Controller {
             // and we want to indicate that
             if new_temp < -20.0 {
                 self.red_led.set_high();
+                self.buzzer.set_high();
                 return Err(Error::TempRead);
             }
             self.liquid_temp = (self.liquid_temp + new_temp) / 2.0;
 
             self.red_led.set_low();
+            self.buzzer.set_low();
             Ok(())
         } else {
             self.red_led.set_high();
+            self.buzzer.set_high();
             Err(Error::TempRead)
         }
     }

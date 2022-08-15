@@ -109,8 +109,8 @@ mod app {
         defmt::debug!("Stored: {}", config);
 
         // Configure pa4 as an analog input
-        let liquid_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
-        let ambient_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
+        let liquid_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
+        let ambient_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
 
         let pins_a0_a3 = (
             gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl),
@@ -125,6 +125,7 @@ mod app {
             &clocks,
         );
 
+        let buzzer = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
         let fan_enable = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
         let pump_enable = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
         let red_led = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
@@ -137,6 +138,7 @@ mod app {
             ambient_thermistor,
             fan_enable,
             pump_enable,
+            buzzer,
             red_led,
             blue_led,
         );
