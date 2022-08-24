@@ -63,7 +63,7 @@
       36
     ],
     "visible_layers": "ff8bfef_ffffffff",
-    "zone_display_mode": 0
+    "zone_display_mode": 1
   },
   "meta": {
     "filename": "opilio4.0.kicad_prl",
