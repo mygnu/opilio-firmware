@@ -1,3 +1,1 @@
 Cargo.lock -diff
-*.kicad_pcb -diff
-*.kicad_sch -diff
