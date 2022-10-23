@@ -68,6 +68,7 @@ impl FlashOps for Config {
         };
 
         if let Ok(config) = Config::from_bytes(bytes) {
+            defmt::debug!("Config from disk: {:?}", config);
             if config.is_valid() {
                 return config;
             }

@@ -5,7 +5,7 @@ use opilio_lib::{error::Error, Config, Id, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{
-        gpioa::PA4, Analog, Output, PushPull, PA5, PB11, PB12, PB13, PB14, PB15,
+        gpioa::PA4, Analog, Output, PushPull, PA5, PA6, PB11, PB12, PB14, PB15,
     },
     pac::ADC1,
     timer::Channel,
@@ -22,8 +22,9 @@ const B_PARAM: f32 = 3700.0;
 
 /// 0*C in kelvin
 const ZERO_K_IN_C: f32 = 273.15;
-// Analog to digital resolution
-const ADC_RESOLUTION: f32 = 4096.0;
+
+// voltage supply / ADC resolution
+const ADC_RATIO: f32 = V_SUPPLY / 4096.0;
 
 trait ChannelMap {
     fn channel(&self) -> Channel;
@@ -52,15 +53,16 @@ impl ChannelMap for Id {
 pub struct Controller {
     adc: Adc<ADC1>,
     max_duty_value: u16,
-    fan_enable: PB12<Output<PushPull>>,
-    pump_enable: PB13<Output<PushPull>>,
+    enable_pin: PB12<Output<PushPull>>,
     buzzer: PB11<Output<PushPull>>,
     red_led: PB14<Output<PushPull>>,
     blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
-    liquid_thermistor: PA5<Analog>,
     ambient_thermistor: PA4<Analog>,
-    liquid_temp: f32,
+    liquid_in_thermistor: PA5<Analog>,
+    liquid_out_thermistor: PA6<Analog>,
+    liquid_in_temp: f32,
+    liquid_out_temp: f32,
     ambient_temp: f32,
 }
 
@@ -68,10 +70,10 @@ impl Controller {
     pub fn new(
         mut timer2: PwmTimer2,
         adc: Adc<ADC1>,
-        liquid_thermistor: PA5<Analog>,
         ambient_thermistor: PA4<Analog>,
-        fan_enable: PB12<Output<PushPull>>,
-        pump_enable: PB13<Output<PushPull>>,
+        liquid_in_thermistor: PA5<Analog>,
+        liquid_out_thermistor: PA6<Analog>,
+        enable_pin: PB12<Output<PushPull>>,
         buzzer: PB11<Output<PushPull>>,
         red_led: PB14<Output<PushPull>>,
         blue_led: PB15<Output<PushPull>>,
@@ -86,17 +88,19 @@ impl Controller {
         }
 
         Self {
-            liquid_thermistor,
+            liquid_in_thermistor,
+            liquid_out_thermistor,
             ambient_thermistor,
             adc,
             max_duty_value,
             pwm_timer: timer2,
-            fan_enable,
-            pump_enable,
+            enable_pin,
+
             buzzer,
             red_led,
             blue_led,
-            liquid_temp: 22.0,
+            liquid_in_temp: 22.0,
+            liquid_out_temp: 22.0,
             ambient_temp: 22.0,
         }
     }
@@ -108,10 +112,9 @@ impl Controller {
         for channel in [Channel::C1, Channel::C2, Channel::C3, Channel::C4] {
             self.pwm_timer.set_duty(channel, 0);
         }
-        if self.fan_enable.is_set_high() {
+        if self.enable_pin.is_set_high() {
             debug!("turning off fan and pump");
-            self.fan_enable.set_low();
-            self.pump_enable.set_low();
+            self.enable_pin.set_low();
         }
 
         if self.blue_led.is_set_low() {
@@ -122,10 +125,9 @@ impl Controller {
     /// puts fan and pump mosfets in on mode
     /// blue signal led is set low
     pub fn active_mode(&mut self) {
-        if self.fan_enable.is_set_low() {
+        if self.enable_pin.is_set_low() {
             debug!("enabling fan and pump");
-            self.fan_enable.set_high();
-            self.pump_enable.set_high();
+            self.enable_pin.set_high();
         }
 
         if self.blue_led.is_set_high() {
@@ -136,30 +138,44 @@ impl Controller {
     /// Adjust PWM on all channels according to the configuration
     /// and temperature reading
     pub fn adjust_pwm(&mut self, config: &Config) {
-        let (liquid_temp, ambient_temp) = if self.fetch_current_temps().is_ok()
-        {
-            (self.get_liquid_temp(), self.get_ambient_temp())
-        } else {
-            // assume we are running hot
-            // in case thermistor is faulty or unplugged
-            (35.0, 20.0)
-        };
+        if self.enable_pin.is_set_low() {
+            for setting in &config.settings {
+                self.pwm_timer.set_duty(setting.id.channel(), 0);
+            }
+            return;
+        }
+
+        let (liquid_in_temp, ambient_temp, liquid_out_temp) =
+            if self.fetch_current_temps().is_ok() {
+                (
+                    self.get_liquid_in_temp(),
+                    self.get_ambient_temp(),
+                    self.get_liquid_out_temp(),
+                )
+            } else {
+                // assume we are running hot
+                // in case thermistor is faulty or unplugged
+                (35.0, 20.0, 30.0)
+            };
+        debug!(
+            "liquid_in {}C, liquid_out_temp {}C, ambient {}C,",
+            liquid_in_temp, liquid_out_temp, ambient_temp
+        );
         for setting in &config.settings {
-            // turn off fans if ambient_temp is hotter, except for the pump, it
-            // should never be turned off
             let duty_to_set =
-                if liquid_temp > ambient_temp || setting.id == Id::P1 {
-                    setting.get_duty(liquid_temp, self.max_duty_value)
-                } else {
-                    0
-                };
-            trace!("duty {}", duty_to_set);
+                setting.get_duty(liquid_in_temp, self.max_duty_value);
+            debug!("{}, duty {}", setting, duty_to_set);
+
             self.pwm_timer.set_duty(setting.id.channel(), duty_to_set);
         }
     }
 
-    pub fn get_liquid_temp(&mut self) -> f32 {
-        self.liquid_temp
+    pub fn get_liquid_in_temp(&mut self) -> f32 {
+        self.liquid_in_temp
+    }
+
+    pub fn get_liquid_out_temp(&mut self) -> f32 {
+        self.liquid_out_temp
     }
 
     pub fn get_ambient_temp(&mut self) -> f32 {
@@ -169,13 +185,18 @@ impl Controller {
     /// reads temperature in celsius degrees
     /// red led is turned on in case of error
     pub fn fetch_current_temps(&mut self) -> Result<()> {
-        if let Ok(adc0_reading) = self.adc.read(&mut self.ambient_thermistor) {
-            let new_temp = adc_reading_to_temp(adc0_reading);
+        if let Ok(adc_reading) = self.adc.read(&mut self.ambient_thermistor) {
+            let new_temp = adc_reading_to_temp(adc_reading);
             self.ambient_temp = (self.ambient_temp + new_temp) / 2.0;
         }
+        if let Ok(adc_reading) = self.adc.read(&mut self.liquid_out_thermistor)
+        {
+            let new_temp = adc_reading_to_temp(adc_reading);
+            self.liquid_out_temp = (self.liquid_out_temp + new_temp) / 2.0;
+        }
 
-        if let Ok(adc1_reading) = self.adc.read(&mut self.liquid_thermistor) {
-            let new_temp = adc_reading_to_temp(adc1_reading);
+        if let Ok(adc_reading) = self.adc.read(&mut self.liquid_in_thermistor) {
+            let new_temp = adc_reading_to_temp(adc_reading);
             // if thermistor is disconnected, temp reading is in negative
             // and we want to indicate that
             if new_temp < -20.0 {
@@ -183,7 +204,7 @@ impl Controller {
                 self.buzzer.set_high();
                 return Err(Error::TempRead);
             }
-            self.liquid_temp = (self.liquid_temp + new_temp) / 2.0;
+            self.liquid_in_temp = (self.liquid_in_temp + new_temp) / 2.0;
 
             self.red_led.set_low();
             self.buzzer.set_low();
@@ -198,7 +219,7 @@ impl Controller {
 
 /// converts ADC reading value to degrees celsius
 fn adc_reading_to_temp(adc_reading: u16) -> f32 {
-    let v_out: f32 = adc_reading as f32 * V_SUPPLY / ADC_RESOLUTION;
+    let v_out: f32 = adc_reading as f32 * ADC_RATIO;
     trace!("v_out {}", v_out);
     trace!("adc_reading: {}", adc_reading);
 
