@@ -1,11 +1,12 @@
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
-use defmt::{debug, trace};
+use defmt::{debug, info, trace};
 use micromath::F32Ext;
 use opilio_lib::{error::Error, Config, Id, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{
-        gpioa::PA4, Analog, Output, PushPull, PA5, PA6, PB11, PB12, PB14, PB15,
+        gpioa::PA4, Analog, Output, PushPull, PA5, PA6, PA8, PB11, PB12, PB14,
+        PB15,
     },
     pac::ADC1,
     timer::Channel,
@@ -56,6 +57,7 @@ pub struct Controller {
     enable_pin: PB12<Output<PushPull>>,
     buzzer: PB11<Output<PushPull>>,
     red_led: PB14<Output<PushPull>>,
+    green_led: PA8<Output<PushPull>>,
     blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
     ambient_thermistor: PA4<Analog>,
@@ -76,6 +78,7 @@ impl Controller {
         enable_pin: PB12<Output<PushPull>>,
         buzzer: PB11<Output<PushPull>>,
         red_led: PB14<Output<PushPull>>,
+        mut green_led: PA8<Output<PushPull>>,
         blue_led: PB15<Output<PushPull>>,
     ) -> Self {
         let max_duty_value = timer2.get_max_duty();
@@ -86,6 +89,8 @@ impl Controller {
             timer2.enable(channel);
             timer2.set_duty(channel, min_duty);
         }
+
+        green_led.set_low();
 
         Self {
             liquid_in_thermistor,
@@ -98,6 +103,7 @@ impl Controller {
 
             buzzer,
             red_led,
+            green_led,
             blue_led,
             liquid_in_temp: 22.0,
             liquid_out_temp: 22.0,
@@ -112,13 +118,19 @@ impl Controller {
         for channel in [Channel::C1, Channel::C2, Channel::C3, Channel::C4] {
             self.pwm_timer.set_duty(channel, 0);
         }
+
         if self.enable_pin.is_set_high() {
-            debug!("turning off fan and pump");
+            info!("turning off fan and pump");
             self.enable_pin.set_low();
         }
 
+        // blink
         if self.blue_led.is_set_low() {
             self.blue_led.set_high();
+            self.green_led.set_high();
+        } else {
+            self.blue_led.set_low();
+            self.green_led.set_low();
         }
     }
 
@@ -126,7 +138,7 @@ impl Controller {
     /// blue signal led is set low
     pub fn active_mode(&mut self) {
         if self.enable_pin.is_set_low() {
-            debug!("enabling fan and pump");
+            info!("enabling fan and pump");
             self.enable_pin.set_high();
         }
 

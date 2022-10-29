@@ -106,7 +106,7 @@ mod app {
 
         let config = Config::from_flash(&mut flash);
 
-        defmt::debug!("Stored: {}", config);
+        defmt::info!("Stored Config: {}", config);
 
         // Configure pa4 as an analog input
         let ambient_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
@@ -129,6 +129,7 @@ mod app {
         let buzzer = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
         let enable_pin = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
         let red_led = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
+        let green_led = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
         let blue_led = gpiob.pb15.into_push_pull_output(&mut gpiob.crh);
 
         let controller = Controller::new(
@@ -140,6 +141,7 @@ mod app {
             enable_pin,
             buzzer,
             red_led,
+            green_led,
             blue_led,
         );
 
