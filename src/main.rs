@@ -7,7 +7,9 @@ mod app {
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
     use opilio_firmware::{
-        controller::Controller, serial_handler::UsbHandler, tacho::TachoReader,
+        controller::{Controller, TICK_PERIOD},
+        serial_handler::UsbHandler,
+        tacho::TachoReader,
         FlashOps, PwmTimer2,
     };
     use opilio_lib::{Config, Id, PID, VID};
@@ -127,7 +129,8 @@ mod app {
         );
 
         let buzzer = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
-        let enable_pin = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
+        let pump_pwr = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
+        let fan_pwr = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
         let red_led = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
         let green_led = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
         let blue_led = gpiob.pb15.into_push_pull_output(&mut gpiob.crh);
@@ -138,7 +141,8 @@ mod app {
             ambient_thermistor,
             liquid_in_thermistor,
             liquid_out_thermistor,
-            enable_pin,
+            pump_pwr,
+            fan_pwr,
             buzzer,
             red_led,
             green_led,
@@ -168,23 +172,19 @@ mod app {
     #[task(shared = [controller, config, tacho, tick])]
     fn periodic(cx: periodic::Context) {
         trace!("periodic");
-        // milliseconds
-        let period = 450_u64;
 
         (cx.shared.controller, cx.shared.config, cx.shared.tick).lock(
             |ctl, config, tick| {
                 if *tick > config.general.sleep_after as u64 * 1000 {
-                    ctl.standby_mode();
+                    ctl.adjust_pwm(config, true);
                 } else {
-                    ctl.active_mode();
-
-                    ctl.adjust_pwm(config);
-                    *tick = tick.saturating_add(period);
+                    ctl.adjust_pwm(config, false);
+                    *tick = tick.saturating_add(TICK_PERIOD);
                 }
             },
         );
 
-        periodic::spawn_after(period.millis()).ok();
+        periodic::spawn_after(TICK_PERIOD.millis()).ok();
     }
 
     // #[task(binds = USB_HP_CAN_TX, shared = [])]

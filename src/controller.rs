@@ -1,12 +1,12 @@
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, info, trace};
 use micromath::F32Ext;
-use opilio_lib::{error::Error, Config, Id, Result};
+use opilio_lib::{error::Error, get_smart_duty, Config, Id, Result};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{
-        gpioa::PA4, Analog, Output, PushPull, PA5, PA6, PA8, PB11, PB12, PB14,
-        PB15,
+        gpioa::PA4, Analog, Output, PushPull, PA5, PA6, PA8, PB11, PB12, PB13,
+        PB14, PB15,
     },
     pac::ADC1,
     timer::Channel,
@@ -26,6 +26,9 @@ const ZERO_K_IN_C: f32 = 273.15;
 
 // voltage supply / ADC resolution
 const ADC_RATIO: f32 = V_SUPPLY / 4096.0;
+
+// milliseconds
+pub const TICK_PERIOD: u64 = 450_u64;
 
 trait ChannelMap {
     fn channel(&self) -> Channel;
@@ -54,7 +57,8 @@ impl ChannelMap for Id {
 pub struct Controller {
     adc: Adc<ADC1>,
     max_duty_value: u16,
-    enable_pin: PB12<Output<PushPull>>,
+    pump_pwr: PB12<Output<PushPull>>,
+    fan_pwr: PB13<Output<PushPull>>,
     buzzer: PB11<Output<PushPull>>,
     red_led: PB14<Output<PushPull>>,
     green_led: PA8<Output<PushPull>>,
@@ -75,7 +79,8 @@ impl Controller {
         ambient_thermistor: PA4<Analog>,
         liquid_in_thermistor: PA5<Analog>,
         liquid_out_thermistor: PA6<Analog>,
-        enable_pin: PB12<Output<PushPull>>,
+        pump_pwr: PB12<Output<PushPull>>,
+        fan_pwr: PB13<Output<PushPull>>,
         buzzer: PB11<Output<PushPull>>,
         red_led: PB14<Output<PushPull>>,
         mut green_led: PA8<Output<PushPull>>,
@@ -99,8 +104,8 @@ impl Controller {
             adc,
             max_duty_value,
             pwm_timer: timer2,
-            enable_pin,
-
+            pump_pwr,
+            fan_pwr,
             buzzer,
             red_led,
             green_led,
@@ -113,15 +118,20 @@ impl Controller {
 
     /// puts fan and pump mosfets in off mode
     /// blue signal led is set high
-    pub fn standby_mode(&mut self) {
-        // shut down pwm
+    fn standby_mode(&mut self) {
+        // // shut down pwm
         for channel in [Channel::C1, Channel::C2, Channel::C3, Channel::C4] {
             self.pwm_timer.set_duty(channel, 0);
         }
 
-        if self.enable_pin.is_set_high() {
-            info!("turning off fan and pump");
-            self.enable_pin.set_low();
+        if self.pump_pwr.is_set_high() {
+            info!("turning off pump");
+            self.pump_pwr.set_low();
+        }
+
+        if self.fan_pwr.is_set_high() {
+            info!("turning off fans");
+            self.fan_pwr.set_low();
         }
 
         // blink
@@ -136,26 +146,27 @@ impl Controller {
 
     /// puts fan and pump mosfets in on mode
     /// blue signal led is set low
-    pub fn active_mode(&mut self) {
-        if self.enable_pin.is_set_low() {
-            info!("enabling fan and pump");
-            self.enable_pin.set_high();
+    fn active_mode(&mut self) {
+        if self.pump_pwr.is_set_low() {
+            info!("enabling pump");
+            self.pump_pwr.set_high();
         }
 
         if self.blue_led.is_set_high() {
+            // led work with opposite toggle
             self.blue_led.set_low();
         }
     }
 
     /// Adjust PWM on all channels according to the configuration
     /// and temperature reading
-    pub fn adjust_pwm(&mut self, config: &Config) {
-        if self.enable_pin.is_set_low() {
-            for setting in &config.settings {
-                self.pwm_timer.set_duty(setting.id.channel(), 0);
-            }
+    pub fn adjust_pwm(&mut self, config: &Config, standby: bool) {
+        if standby {
+            self.standby_mode();
             return;
         }
+
+        self.active_mode();
 
         let (liquid_in_temp, ambient_temp, liquid_out_temp) =
             if self.fetch_current_temps().is_ok() {
@@ -173,12 +184,47 @@ impl Controller {
             "liquid_in {}C, liquid_out_temp {}C, ambient {}C,",
             liquid_in_temp, liquid_out_temp, ambient_temp
         );
-        for setting in &config.settings {
-            let duty_to_set =
-                setting.get_duty(liquid_in_temp, self.max_duty_value);
-            debug!("{}, duty {}", setting, duty_to_set);
 
-            self.pwm_timer.set_duty(setting.id.channel(), duty_to_set);
+        if let Some(ref smart_mode) = config.smart_mode {
+            let duty_to_set = get_smart_duty(
+                liquid_in_temp,
+                ambient_temp,
+                smart_mode.trigger_above_ambient,
+                smart_mode.upper_temp,
+                self.max_duty_value,
+                self.fan_pwr.is_set_high(),
+            );
+
+            debug!("smart duty {}", duty_to_set);
+
+            if duty_to_set > 0 {
+                self.fan_pwr.set_high();
+                // set duty except the pump
+                for channel in [Channel::C2, Channel::C3, Channel::C4] {
+                    self.pwm_timer.set_duty(channel, duty_to_set);
+                }
+            } else {
+                self.fan_pwr.set_low()
+            }
+
+            debug!("{}:{}", self.max_duty_value, smart_mode.pump_duty);
+
+            let pump_duty =
+                self.max_duty_value as f32 * (smart_mode.pump_duty / 100.0);
+            debug!("pump duty {}", pump_duty);
+            self.pwm_timer.set_duty(Channel::C1, pump_duty as u16);
+        } else {
+            if self.fan_pwr.is_set_low() {
+                debug!("enabling fan");
+                self.fan_pwr.set_high();
+            }
+            for setting in &config.settings {
+                let duty_to_set =
+                    setting.get_duty(liquid_in_temp, self.max_duty_value);
+                debug!("{}, duty {}", setting, duty_to_set);
+
+                self.pwm_timer.set_duty(setting.id.channel(), duty_to_set);
+            }
         }
     }
 

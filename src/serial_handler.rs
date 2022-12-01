@@ -43,7 +43,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
         controller: &mut Controller,
         flash: &mut flash::Parts,
     ) -> Result<()> {
-        let mut buf = [0u8; 128];
+        let mut buf = [0u8; 256];
         let mut cursor =
             self.serial.read(&mut buf).map_err(|_| Error::SerialRead)?;
 
@@ -55,7 +55,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
         loop {
             match self.serial.read(&mut buf[cursor..]) {
                 Ok(count) => {
-                    defmt::debug!("count: {}", count);
+                    defmt::info!("count: {}", count);
                     if count == 0 {
                         break;
                     }
@@ -69,7 +69,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
         }
 
         let otw_in = OTW::from_bytes(&buf)?;
-        defmt::debug!("Received {:?}", otw_in.cmd);
+        defmt::info!("Received {:?}", otw_in);
         match otw_in.cmd {
             Cmd::UploadSetting => {
                 if let Data::Setting(setting) = otw_in.data {
@@ -128,6 +128,15 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
             Cmd::UploadGeneral => {
                 if let Data::General(general) = otw_in.data {
                     config.general = general;
+
+                    self.serial
+                        .write(OTW::serialised_ok())
+                        .map_err(|_| Error::SerialWrite)?;
+                }
+            }
+            Cmd::UploadAll => {
+                if let Data::Config(new_config) = otw_in.data {
+                    *config = new_config;
 
                     self.serial
                         .write(OTW::serialised_ok())
