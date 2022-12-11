@@ -2,10 +2,6 @@
 pub mod controller;
 pub mod serial_handler;
 pub mod tacho;
-use core::{
-    ops::Deref,
-    sync::atomic::{AtomicUsize, Ordering},
-};
 
 // global logger
 use defmt_rtt as _;
@@ -24,23 +20,15 @@ use stm32f1xx_hal::{
 /// start address: 0x08000000
 /// used by program: 60 KIB
 /// we can use the rest from the 64K memory (4kb) for storage
-const FLASH_START_OFFSET: u32 = 0xF000;
+const FLASH_START_OFFSET: u32 = 0x0C800;
 
-// same panicking *behavior* as `panic-probe` but doesn't print a panic message
+// same panicking *behaviour* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is
 // invoked
 #[defmt::panic_handler]
 fn panic() -> ! {
     cortex_m::asm::udf()
 }
-
-static COUNT: AtomicUsize = AtomicUsize::new(0);
-defmt::timestamp!("{=usize}", {
-    // NOTE(no-CAS) `timestamps` runs with interrupts disabled
-    let n = COUNT.load(Ordering::Relaxed);
-    COUNT.store(n + 1, Ordering::Relaxed);
-    n
-});
 
 /// Terminates the application and makes `probe-run` exit with exit-code = 0
 pub fn exit() -> ! {
@@ -74,32 +62,41 @@ impl FlashOps for Config {
             Ok(it) => it,
             _ => {
                 defmt::error!("failed to read flash");
-                return Config::default();
+                return Self::default();
             }
         };
 
-        if let Ok(config) = Config::from_bytes(bytes) {
+        defmt::info!("Bytes {} from flash", bytes);
+
+        if let Ok(config) = Self::from_bytes(bytes) {
+            defmt::debug!("Config from disk: {:?}", config);
             if config.is_valid() {
                 return config;
             }
+        } else {
+            defmt::error!("failed to create Config from bytes");
         }
-        Config::default()
+        Self::default()
     }
 
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()> {
         let mut writer = get_writer(flash);
 
-        let buff = self.to_vec()?;
-        defmt::debug!("{}", self);
-        defmt::debug!("Saving {} to flash", buff);
-        defmt::debug!("length {}", buff.len());
+        let mut buff = self.to_vec()?;
+        // byte align data if it ends at an odd length
+        if buff.len() & 0x1 != 0 {
+            buff.push(0x0FF).ok();
+        }
+
         writer
             .page_erase(FLASH_START_OFFSET)
             .map_err(|_| Error::FlashErase)?;
 
         writer
-            .write(FLASH_START_OFFSET, buff.deref())
+            .write(FLASH_START_OFFSET, &buff)
             .map_err(|_| Error::FlashWrite)?;
+
+        defmt::info!("Saved");
         Ok(())
     }
 }

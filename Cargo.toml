@@ -15,10 +15,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 # hal dependencies
 embedded-hal = "0.2"
-heapless = { version = "0.7", features = ["defmt-impl"] }
 micromath = "2.0"
-postcard = "1.0"
-serde = { version = "1.0", default-features = false, features = ["derive"] }
 stm32f1xx-hal = { version = "0.9", features = [
     "rt",
     "stm32f103",
