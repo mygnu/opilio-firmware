@@ -31,16 +31,17 @@ mod app {
 
     #[shared]
     struct Shared {
-        usb_handler: UsbHandler<UsbBusType>,
         config: Config,
-        flash: Parts,
         controller: Controller,
         tacho: TachoReader,
         tick: u64,
     }
 
     #[local]
-    struct Local {}
+    struct Local {
+        usb_handler: UsbHandler<UsbBusType>,
+        flash: Parts,
+    }
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local, init::Monotonics) {
@@ -157,14 +158,12 @@ mod app {
 
         (
             Shared {
-                usb_handler,
                 config,
-                flash,
                 controller,
                 tacho,
                 tick: 0,
             },
-            Local {},
+            Local { usb_handler, flash },
             init::Monotonics(mono),
         )
     }
@@ -233,12 +232,12 @@ mod app {
 
     /// usb_rx0 interrupt handler
     /// triggers every time there is incoming data on usb serial bus
-    #[task(binds = USB_LP_CAN_RX0, shared = [usb_handler, config, flash, tick, controller, tacho])]
+    #[task(binds = USB_LP_CAN_RX0, local = [usb_handler, flash], shared = [ config,  tick, controller, tacho])]
     fn usb_rx0(cx: usb_rx0::Context) {
         debug!("usb rx");
-        let mut usb_handler = cx.shared.usb_handler;
+        let usb_handler = cx.local.usb_handler;
         let mut config = cx.shared.config;
-        let mut flash = cx.shared.flash;
+        let flash = cx.local.flash;
         let mut tick = cx.shared.tick;
         let mut controller = cx.shared.controller;
         let mut tacho = cx.shared.tacho;
@@ -248,16 +247,11 @@ mod app {
             *c = 0;
         });
 
-        (
-            &mut usb_handler,
-            &mut config,
-            &mut flash,
-            &mut controller,
-            &mut tacho,
-        )
-            .lock(|usb_handler, config, flash, controller, tacho| {
+        (&mut config, &mut controller, &mut tacho).lock(
+            |config, controller, tacho| {
                 usb_handler.poll(config, flash, controller, tacho);
-            });
+            },
+        );
     }
 }
 
