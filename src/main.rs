@@ -107,10 +107,6 @@ mod app {
         // Initialize the monotonic (SysTick rate is 48 MHz)
         let mono = Systick::new(cx.core.SYST, 48_000_000);
 
-        let config = Config::from_flash(&mut flash);
-
-        defmt::info!("Stored Config: {}", config);
-
         // Configure pa4 as an analog input
         let ambient_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
         let liquid_in_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
@@ -135,6 +131,21 @@ mod app {
         let red_led = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
         let green_led = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
         let blue_led = gpiob.pb15.into_push_pull_output(&mut gpiob.crh);
+
+        let config = if let Ok(config) = Config::from_flash(&mut flash) {
+            if config.is_valid() {
+                defmt::debug!("Config from disk: {:?}", config);
+                config
+            } else {
+                defmt::error!("Invalid Config: {:?}", config);
+                Config::default()
+            }
+        } else {
+            defmt::error!("Failed to create Config, using Default");
+            Config::default()
+        };
+
+        defmt::info!("Stored Config: {}", config);
 
         let controller = Controller::new(
             pwm_timer2,

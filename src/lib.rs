@@ -50,33 +50,24 @@ pub type PwmTimer2 = PwmHz<
 >;
 
 pub trait FlashOps {
-    fn from_flash(flash: &mut flash::Parts) -> Config;
+    fn from_flash(flash: &mut flash::Parts) -> Result<Config>;
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()>;
 }
 
 impl FlashOps for Config {
-    fn from_flash(flash: &mut flash::Parts) -> Self {
+    fn from_flash(flash: &mut flash::Parts) -> Result<Self> {
         let writer = get_writer(flash);
 
         let bytes = match writer.read(FLASH_START_OFFSET, SZ_1K as usize) {
             Ok(it) => it,
             _ => {
                 defmt::error!("failed to read flash");
-                return Self::default();
+                return Err(Error::FlashRead);
             }
         };
 
         defmt::info!("Bytes {} from flash", bytes);
-
-        if let Ok(config) = Self::from_bytes(bytes) {
-            defmt::debug!("Config from disk: {:?}", config);
-            if config.is_valid() {
-                return config;
-            }
-        } else {
-            defmt::error!("failed to create Config from bytes");
-        }
-        Self::default()
+        Self::from_bytes(bytes)
     }
 
     fn save_to_flash(&self, flash: &mut flash::Parts) -> Result<()> {
