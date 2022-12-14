@@ -61,11 +61,12 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bxcan"
-version = "0.6.2"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b13b4b2ea9ab2ba924063ebb86ad895cb79f4a79bf90f27949eb20c335b30f9"
+checksum = "40ac3d0c0a542d0ab5521211f873f62706a7136df415676f676d347e5a41dd80"
 dependencies = [
  "bitflags",
+ "embedded-hal",
  "nb 1.0.0",
  "vcell",
 ]
@@ -573,9 +574,9 @@ dependencies = [
 
 [[package]]
 name = "stm32f1"
-version = "0.14.0"
+version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78d0d11d776bc6f165c68c67468826b33b3eabd04c3c319df5e8476dd580002d"
+checksum = "f2dc80735831c28fe85384e1e28428fb6d201f67c696e369a239ed9c5eba369d"
 dependencies = [
  "bare-metal 1.0.0",
  "cortex-m",
@@ -585,9 +586,9 @@ dependencies = [
 
 [[package]]
 name = "stm32f1xx-hal"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1232c561785bdbc59a5ab2b28c5c9429cb9ee9b04687133e59d1a34a39426943"
+checksum = "30845662b9ce46a2ec04da97666a2b32458bee5032bb0452d0caf1536a96a542"
 dependencies = [
  "bitflags",
  "bxcan",

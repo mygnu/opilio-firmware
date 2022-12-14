@@ -218,22 +218,22 @@ mod app {
 
         cx.shared.tacho.lock(|t| {
             let status_register = tim.sr.read();
-            if status_register.cc1if().bits() {
-                let current = tim.ccr1.read().bits() as u16;
+            if status_register.cc1if().bit_is_set() {
+                let current = tim.ccr1().read().bits() as u16;
                 t.update(Id::P1, current);
                 tim.sr.write(|w| w.cc1if().clear_bit());
-            } else if status_register.cc2if().bits() {
-                let current = tim.ccr2.read().bits() as u16;
+            } else if status_register.cc2if().bit_is_set() {
+                let current = tim.ccr2().read().bits() as u16;
                 t.update(Id::F1, current);
 
                 tim.sr.write(|w| w.cc2if().clear_bit());
-            } else if status_register.cc3if().bits() {
-                let current = tim.ccr3.read().bits() as u16;
+            } else if status_register.cc3if().bit_is_set() {
+                let current = tim.ccr3().read().bits() as u16;
                 t.update(Id::F2, current);
 
                 tim.sr.write(|w| w.cc3if().clear_bit());
-            } else if status_register.cc4if().bits() {
-                let current = tim.ccr4.read().bits() as u16;
+            } else if status_register.cc4if().bit_is_set() {
+                let current = tim.ccr4().read().bits() as u16;
                 t.update(Id::F3, current);
                 tim.sr.write(|w| w.cc4if().clear_bit());
             }
