@@ -99,8 +99,8 @@ mod app {
             unsafe { USB_BUS.as_ref().unwrap() },
             UsbVidPid(VID, PID),
         )
-        .manufacturer("Opilio")
-        .product("Opilio - PC Fan/Pump Controller v1")
+        .manufacturer("Hematite Engineering Ltd")
+        .product("Opilio - PC Fan/Pump Controller")
         .serial_number(VERSION)
         .device_class(usbd_serial::USB_CLASS_CDC)
         .build();
