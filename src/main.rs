@@ -7,7 +7,7 @@ mod app {
     use cortex_m::asm::delay;
     use defmt::{debug, trace};
     use opilio_firmware::{
-        controller::{Controller, TICK_PERIOD},
+        controller::{Controller, RgbLed, Temps, TICK_PERIOD},
         serial_handler::UsbHandler,
         tacho::TachoReader,
         FlashOps, PwmTimer2,
@@ -23,6 +23,8 @@ mod app {
     };
     use systick_monotonic::{ExtU64, Systick};
     use usb_device::prelude::*;
+
+    const VERSION: &str = "1.0.0";
 
     use super::timer_setup::timer4_input_setup;
 
@@ -99,6 +101,7 @@ mod app {
         )
         .manufacturer("Opilio")
         .product("Opilio - PC Fan/Pump Controller v1")
+        .serial_number(VERSION)
         .device_class(usbd_serial::USB_CLASS_CDC)
         .build();
 
@@ -131,35 +134,32 @@ mod app {
         let red_led = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
         let green_led = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
         let blue_led = gpiob.pb15.into_push_pull_output(&mut gpiob.crh);
+        let mut led = RgbLed::new(red_led, green_led, blue_led);
+        led.exclusive_on(opilio_firmware::controller::Led::G);
 
         let config = if let Ok(config) = Config::from_flash(&mut flash) {
             if config.is_valid() {
                 defmt::debug!("Config from disk: {:?}", config);
                 config
             } else {
-                defmt::error!("Invalid Config: {:?}", config);
+                defmt::error!("Invalid {:?}", config);
                 Config::default()
             }
         } else {
-            defmt::error!("Failed to create Config, using Default");
-            Config::default()
+            let config = Config::default();
+            defmt::error!("Failed to create, using Default {}", config);
+            config
         };
 
-        defmt::info!("Stored Config: {}", config);
-
-        let controller = Controller::new(
-            pwm_timer2,
+        let temps = Temps::new(
             adc1,
             ambient_thermistor,
             liquid_in_thermistor,
             liquid_out_thermistor,
-            pump_pwr,
-            fan_pwr,
-            buzzer,
-            red_led,
-            green_led,
-            blue_led,
         );
+
+        let controller =
+            Controller::new(pwm_timer2, pump_pwr, fan_pwr, buzzer, temps, led);
 
         timer4_input_setup(gpiob.pb6, gpiob.pb7, gpiob.pb8, gpiob.pb9);
 
@@ -185,11 +185,15 @@ mod app {
 
         (cx.shared.controller, cx.shared.config, cx.shared.tick).lock(
             |ctl, config, tick| {
-                if *tick > config.general.sleep_after as u64 * 1000 {
-                    ctl.adjust_pwm(config, true);
+                if let Some(sleep_after) = config.general.sleep_after {
+                    if *tick > sleep_after as u64 * 1000 {
+                        ctl.adjust_pwm(config, true);
+                    } else {
+                        ctl.adjust_pwm(config, false);
+                        *tick = tick.saturating_add(TICK_PERIOD);
+                    }
                 } else {
                     ctl.adjust_pwm(config, false);
-                    *tick = tick.saturating_add(TICK_PERIOD);
                 }
             },
         );
@@ -205,6 +209,7 @@ mod app {
     #[idle]
     fn idle(_cx: idle::Context) -> ! {
         loop {
+            // defmt::info!("idle");
             rtic::export::nop();
         }
     }

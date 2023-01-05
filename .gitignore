@@ -8,3 +8,4 @@ gerber**
 *.zip
 *-backups
 logs*
+*.bin

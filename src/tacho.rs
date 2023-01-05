@@ -62,23 +62,25 @@ impl TachoReader {
         }
     }
 
-    pub fn rpm(&mut self, fan_id: Id) -> f32 {
-        let t = self.get_tick(&fan_id);
-
-        if t.elapsed_ticks == 0 {
-            0.0
-        } else {
-            let rpm = 48_000_000.0 / (481.0 * t.elapsed_ticks as f32) * 30.0;
-            t.tick(15);
-            rpm
-        }
-    }
+    #[inline(always)]
     pub fn rpm_data(&mut self) -> (f32, f32, f32, f32) {
+        let rpm = |tr: &mut TachoReader, fan_id: Id| -> f32 {
+            let t = tr.get_tick(&fan_id);
+
+            if t.elapsed_ticks == 0 {
+                0.0
+            } else {
+                let rpm =
+                    48_000_000.0 / (481.0 * t.elapsed_ticks as f32) * 30.0;
+                t.tick(15);
+                rpm
+            }
+        };
         (
-            self.rpm(Id::P1),
-            self.rpm(Id::F1),
-            self.rpm(Id::F2),
-            self.rpm(Id::F3),
+            rpm(self, Id::P1),
+            rpm(self, Id::F1),
+            rpm(self, Id::F2),
+            rpm(self, Id::F3),
         )
     }
 }

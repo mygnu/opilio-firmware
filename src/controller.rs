@@ -17,7 +17,7 @@ use crate::PwmTimer2;
 /// 10k resistor measured resistance in Ohms
 const R_10K: f32 = 10000.0;
 /// voltage to the VREF
-const V_SUPPLY: f32 = 3.3;
+const V_SUPPLY: f32 = 3.2925;
 /// B-coefficient of the thermistor (guessed)
 const B_PARAM: f32 = 3700.0;
 
@@ -29,6 +29,8 @@ const ADC_RATIO: f32 = V_SUPPLY / 4096.0;
 
 // milliseconds
 pub const TICK_PERIOD: u64 = 450_u64;
+
+pub const DEFAULT_TEMP: f32 = 22.0;
 
 trait ChannelMap {
     fn channel(&self) -> Channel;
@@ -48,6 +50,150 @@ impl ChannelMap for Id {
     }
 }
 
+pub enum Led {
+    R,
+    G,
+    B,
+    All,
+}
+
+pub struct RgbLed {
+    red_led: PB14<Output<PushPull>>,
+    green_led: PA8<Output<PushPull>>,
+    blue_led: PB15<Output<PushPull>>,
+}
+
+impl RgbLed {
+    #[inline]
+    pub fn new(
+        red_led: PB14<Output<PushPull>>,
+        green_led: PA8<Output<PushPull>>,
+        blue_led: PB15<Output<PushPull>>,
+    ) -> Self {
+        Self {
+            red_led,
+            green_led,
+            blue_led,
+        }
+    }
+
+    #[inline]
+    pub fn exclusive_on(&mut self, led: Led) {
+        match led {
+            Led::R => {
+                self.red_led.set_low();
+                self.green_led.set_high();
+                self.blue_led.set_high();
+            }
+            Led::G => {
+                self.red_led.set_high();
+                self.green_led.set_low();
+                self.blue_led.set_high();
+            }
+            Led::B => {
+                self.red_led.set_high();
+                self.green_led.set_high();
+                self.blue_led.set_low();
+            }
+            Led::All => {
+                self.red_led.set_low();
+                self.green_led.set_low();
+                self.blue_led.set_low();
+            }
+        }
+    }
+    #[inline]
+    pub fn off(&mut self, led: Led) {
+        match led {
+            Led::R => {
+                self.red_led.set_high();
+            }
+            Led::G => {
+                self.green_led.set_high();
+            }
+            Led::B => {
+                self.blue_led.set_high();
+            }
+            Led::All => {
+                self.red_led.set_high();
+                self.green_led.set_high();
+                self.blue_led.set_high();
+            }
+        }
+    }
+}
+
+pub struct Temps {
+    adc: Adc<ADC1>,
+    ambient_temp: f32,
+    ambient_thermistor: PA4<Analog>,
+    liquid_in_temp: f32,
+    liquid_in_thermistor: PA5<Analog>,
+    liquid_out_temp: f32,
+    liquid_out_thermistor: PA6<Analog>,
+}
+
+pub enum Thermistor {
+    LiqIn,
+    LiqOut,
+    Ambient,
+}
+
+impl Temps {
+    pub fn new(
+        adc: Adc<ADC1>,
+        ambient_thermistor: PA4<Analog>,
+        liquid_in_thermistor: PA5<Analog>,
+        liquid_out_thermistor: PA6<Analog>,
+    ) -> Self {
+        Self {
+            adc,
+            ambient_temp: DEFAULT_TEMP,
+            ambient_thermistor,
+            liquid_in_temp: DEFAULT_TEMP,
+            liquid_in_thermistor,
+            liquid_out_temp: DEFAULT_TEMP,
+            liquid_out_thermistor,
+        }
+    }
+
+    pub fn read(&mut self, thermistor: Thermistor) -> Result<()> {
+        match thermistor {
+            Thermistor::LiqIn => {
+                let adc_reading = self
+                    .adc
+                    .read(&mut self.liquid_in_thermistor)
+                    .map_err(|_| Error::TempRead)?;
+
+                let new_temp = adc_reading_to_temp(adc_reading);
+                self.liquid_in_temp = (self.liquid_in_temp + new_temp) / 2.0;
+                if new_temp < -20.0 {
+                    return Err(Error::TempRead);
+                }
+            }
+            Thermistor::LiqOut => {
+                let adc_reading = self
+                    .adc
+                    .read(&mut self.liquid_out_thermistor)
+                    .map_err(|_| Error::TempRead)?;
+
+                let new_temp = adc_reading_to_temp(adc_reading);
+                self.liquid_out_temp = (self.liquid_out_temp + new_temp) / 2.0;
+            }
+            Thermistor::Ambient => {
+                let adc_reading = self
+                    .adc
+                    .read(&mut self.ambient_thermistor)
+                    .map_err(|_| Error::TempRead)?;
+
+                let new_temp = adc_reading_to_temp(adc_reading);
+                self.ambient_temp = (self.ambient_temp + new_temp) / 2.0;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// controller for most of the output of opilio
 /// Responsible for
 /// - Reading thermistor and converting it to temperature in C
@@ -55,36 +201,23 @@ impl ChannelMap for Id {
 /// - Controls Red an Blue single leds
 /// - Controls PWM signal for Fans and pumps
 pub struct Controller {
-    adc: Adc<ADC1>,
+    temps: Temps,
+    buzzer: PB11<Output<PushPull>>,
+    fan_pwr: PB13<Output<PushPull>>,
+    led: RgbLed,
     max_duty_value: u16,
     pump_pwr: PB12<Output<PushPull>>,
-    fan_pwr: PB13<Output<PushPull>>,
-    buzzer: PB11<Output<PushPull>>,
-    red_led: PB14<Output<PushPull>>,
-    green_led: PA8<Output<PushPull>>,
-    blue_led: PB15<Output<PushPull>>,
     pwm_timer: PwmTimer2,
-    ambient_thermistor: PA4<Analog>,
-    liquid_in_thermistor: PA5<Analog>,
-    liquid_out_thermistor: PA6<Analog>,
-    liquid_in_temp: f32,
-    liquid_out_temp: f32,
-    ambient_temp: f32,
 }
 
 impl Controller {
     pub fn new(
         mut timer2: PwmTimer2,
-        adc: Adc<ADC1>,
-        ambient_thermistor: PA4<Analog>,
-        liquid_in_thermistor: PA5<Analog>,
-        liquid_out_thermistor: PA6<Analog>,
         pump_pwr: PB12<Output<PushPull>>,
         fan_pwr: PB13<Output<PushPull>>,
-        buzzer: PB11<Output<PushPull>>,
-        red_led: PB14<Output<PushPull>>,
-        mut green_led: PA8<Output<PushPull>>,
-        blue_led: PB15<Output<PushPull>>,
+        mut buzzer: PB11<Output<PushPull>>,
+        temps: Temps,
+        led: RgbLed,
     ) -> Self {
         let max_duty_value = timer2.get_max_duty();
         let min_duty = max_duty_value * 10 / 100;
@@ -95,24 +228,16 @@ impl Controller {
             timer2.set_duty(channel, min_duty);
         }
 
-        green_led.set_low();
+        buzzer.set_high();
 
         Self {
-            liquid_in_thermistor,
-            liquid_out_thermistor,
-            ambient_thermistor,
-            adc,
+            temps,
             max_duty_value,
             pwm_timer: timer2,
             pump_pwr,
             fan_pwr,
             buzzer,
-            red_led,
-            green_led,
-            blue_led,
-            liquid_in_temp: 22.0,
-            liquid_out_temp: 22.0,
-            ambient_temp: 22.0,
+            led,
         }
     }
 
@@ -134,27 +259,14 @@ impl Controller {
             self.fan_pwr.set_low();
         }
 
-        // blink
-        if self.blue_led.is_set_low() {
-            self.blue_led.set_high();
-            self.green_led.set_high();
-        } else {
-            self.blue_led.set_low();
-            self.green_led.set_low();
-        }
+        self.led.exclusive_on(Led::B);
     }
 
     /// puts fan and pump mosfets in on mode
-    /// blue signal led is set low
     fn active_mode(&mut self) {
         if self.pump_pwr.is_set_low() {
             info!("enabling pump");
             self.pump_pwr.set_high();
-        }
-
-        if self.blue_led.is_set_high() {
-            // led work with opposite toggle
-            self.blue_led.set_low();
         }
     }
 
@@ -228,47 +340,33 @@ impl Controller {
         }
     }
 
+    #[inline]
     pub fn get_liquid_in_temp(&mut self) -> f32 {
-        self.liquid_in_temp
+        self.temps.liquid_in_temp
     }
 
+    #[inline]
     pub fn get_liquid_out_temp(&mut self) -> f32 {
-        self.liquid_out_temp
+        self.temps.liquid_out_temp
     }
 
+    #[inline]
     pub fn get_ambient_temp(&mut self) -> f32 {
-        self.ambient_temp
+        self.temps.ambient_temp
     }
 
     /// reads temperature in celsius degrees
     /// red led is turned on in case of error
     pub fn fetch_current_temps(&mut self) -> Result<()> {
-        if let Ok(adc_reading) = self.adc.read(&mut self.ambient_thermistor) {
-            let new_temp = adc_reading_to_temp(adc_reading);
-            self.ambient_temp = (self.ambient_temp + new_temp) / 2.0;
-        }
-        if let Ok(adc_reading) = self.adc.read(&mut self.liquid_out_thermistor)
-        {
-            let new_temp = adc_reading_to_temp(adc_reading);
-            self.liquid_out_temp = (self.liquid_out_temp + new_temp) / 2.0;
-        }
+        self.temps.read(Thermistor::Ambient).ok();
+        self.temps.read(Thermistor::LiqOut).ok();
 
-        if let Ok(adc_reading) = self.adc.read(&mut self.liquid_in_thermistor) {
-            let new_temp = adc_reading_to_temp(adc_reading);
-            // if thermistor is disconnected, temp reading is in negative
-            // and we want to indicate that
-            if new_temp < -20.0 {
-                self.red_led.set_high();
-                self.buzzer.set_high();
-                return Err(Error::TempRead);
-            }
-            self.liquid_in_temp = (self.liquid_in_temp + new_temp) / 2.0;
-
-            self.red_led.set_low();
+        if self.temps.read(Thermistor::LiqIn).is_ok() {
+            self.led.exclusive_on(Led::G);
             self.buzzer.set_low();
             Ok(())
         } else {
-            self.red_led.set_high();
+            self.led.exclusive_on(Led::R);
             self.buzzer.set_high();
             Err(Error::TempRead)
         }

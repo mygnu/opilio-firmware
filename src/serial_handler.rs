@@ -1,7 +1,6 @@
 use opilio_lib::{
     error::Error, Cmd, Data, DataRef, Response, Result, Stats, OTW,
 };
-
 use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice, UsbError};
 use usbd_serial::SerialPort;
@@ -36,6 +35,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
         }
     }
 
+    #[inline]
     fn process_command(
         &mut self,
         tacho: &mut TachoReader,
