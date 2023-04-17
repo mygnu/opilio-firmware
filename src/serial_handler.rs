@@ -143,6 +143,12 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
+            Cmd::Reload => {
+                *config = Config::from_flash(flash)?;
+                self.serial
+                    .write(OTW::serialised_ok())
+                    .map_err(|_| Error::SerialWrite)?;
+            }
             Cmd::Stats | Cmd::Config | Cmd::Result => (),
         };
 

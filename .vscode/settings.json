@@ -9,6 +9,12 @@
         "thumbv7m-none-eabi"
     ],
     "cSpell.words": [
+        "adcclk",
+        "afio",
+        "cfgr",
+        "mapr",
+        "pclk",
+        "SYST",
         "usbclk"
     ]
 }
