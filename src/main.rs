@@ -24,7 +24,7 @@ mod app {
     use systick_monotonic::{ExtU64, Systick};
     use usb_device::prelude::*;
 
-    const VERSION: &str = "1.0.0";
+    const VERSION: &str = "1.0.1";
 
     use super::timer_setup::timer4_input_setup;
 
@@ -185,15 +185,11 @@ mod app {
 
         (cx.shared.controller, cx.shared.config, cx.shared.tick).lock(
             |ctl, config, tick| {
-                if let Some(sleep_after) = config.general.sleep_after {
-                    if *tick > sleep_after as u64 * 1000 {
-                        ctl.adjust_pwm(config, true);
-                    } else {
-                        ctl.adjust_pwm(config, false);
-                        *tick = tick.saturating_add(TICK_PERIOD);
-                    }
+                if *tick > config.general.sleep_after as u64 * 1000 {
+                    ctl.adjust_pwm(config, true);
                 } else {
                     ctl.adjust_pwm(config, false);
+                    *tick = tick.saturating_add(TICK_PERIOD);
                 }
             },
         );

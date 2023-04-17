@@ -1,3 +1,5 @@
+#!/bin/bash
+
 cargo clean
 cargo objcopy --release -- -O binary opilio.bin
 fwcrypt -e -i opilio.bin -o opilio-en.bin

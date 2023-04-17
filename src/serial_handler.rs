@@ -1,5 +1,5 @@
 use opilio_lib::{
-    error::Error, Cmd, Data, DataRef, Response, Result, Stats, OTW,
+    error::Error, Data, DataRef, Msg, Response, Result, Stats, OTW,
 };
 use stm32f1xx_hal::flash;
 use usb_device::{bus::UsbBus, prelude::UsbDevice, UsbError};
@@ -70,18 +70,10 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
 
         let otw_in = OTW::from_bytes(&buf)?;
         defmt::info!("Received {:?}", otw_in);
-        match otw_in.cmd {
-            Cmd::UploadSetting => {
-                if let Data::Setting(setting) = otw_in.data {
-                    config.set(setting);
-                    self.serial
-                        .write(OTW::serialised_ok())
-                        .map_err(|_| Error::SerialWrite)?;
-                }
-            }
-            Cmd::GetConfig => {
+        match otw_in.msg {
+            Msg::GetConfig => {
                 let bytes =
-                    OTW::serialised_vec(Cmd::Config, DataRef::Config(&config))?;
+                    OTW::serialised_vec(Msg::Config, DataRef::Config(&config))?;
                 let total = (&bytes).len();
                 let mut sent = 0;
                 while sent < total {
@@ -91,7 +83,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
-            Cmd::GetStats => {
+            Msg::GetStats => {
                 let (pump1_rpm, fan1_rpm, fan2_rpm, fan3_rpm) =
                     tacho.rpm_data();
                 let stats = Stats {
@@ -104,15 +96,15 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                     liquid_out_temp: controller.get_liquid_out_temp(),
                 };
                 let otw =
-                    OTW::serialised_vec(Cmd::Stats, DataRef::Stats(&stats))?;
+                    OTW::serialised_vec(Msg::Stats, DataRef::Stats(&stats))?;
                 self.serial
                     .write(otw.as_ref())
                     .map_err(|_| Error::SerialWrite)?;
             }
-            Cmd::SaveConfig => {
+            Msg::SaveConfig => {
                 if let Err(e) = config.save_to_flash(flash) {
                     let otw = OTW::serialised_vec(
-                        Cmd::Result,
+                        Msg::Result,
                         DataRef::Result(&Response::Error(e)),
                     )?;
                     self.serial
@@ -125,16 +117,19 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
-            Cmd::UploadGeneral => {
-                if let Data::General(general) = otw_in.data {
-                    config.general = general;
+            Msg::Ping => {
+                if let Data::Empty = otw_in.data {
+                    let otw = OTW::serialised_vec(
+                        Msg::Pong,
+                        DataRef::Pong(&config.general.sleep_after),
+                    )?;
 
                     self.serial
-                        .write(OTW::serialised_ok())
+                        .write(otw.as_ref())
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
-            Cmd::UploadAll => {
+            Msg::UploadConfig => {
                 if let Data::Config(new_config) = otw_in.data {
                     *config = new_config;
 
@@ -143,13 +138,13 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                         .map_err(|_| Error::SerialWrite)?;
                 }
             }
-            Cmd::Reload => {
+            Msg::Reload => {
                 *config = Config::from_flash(flash)?;
                 self.serial
                     .write(OTW::serialised_ok())
                     .map_err(|_| Error::SerialWrite)?;
             }
-            Cmd::Stats | Cmd::Config | Cmd::Result => (),
+            Msg::Stats | Msg::Config | Msg::Result | Msg::Pong => (),
         };
 
         Ok(())
