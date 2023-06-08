@@ -24,7 +24,7 @@ mod app {
     use systick_monotonic::{ExtU64, Systick};
     use usb_device::prelude::*;
 
-    const VERSION: &str = "1.0.1";
+    const VERSION: &str = "1.2.0";
 
     use super::timer_setup::timer4_input_setup;
 
@@ -99,7 +99,7 @@ mod app {
             unsafe { USB_BUS.as_ref().unwrap() },
             UsbVidPid(VID, PID),
         )
-        .manufacturer("Hematite Engineering Ltd")
+        .manufacturer("Open Hardware")
         .product("Opilio - PC Fan/Pump Controller")
         .serial_number(VERSION)
         .device_class(usbd_serial::USB_CLASS_CDC)
@@ -112,8 +112,8 @@ mod app {
 
         // Configure pa4 as an analog input
         let ambient_thermistor = gpioa.pa4.into_analog(&mut gpioa.crl);
-        let liquid_in_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
-        let liquid_out_thermistor = gpioa.pa6.into_analog(&mut gpioa.crl);
+        let coolant_thermistor = gpioa.pa5.into_analog(&mut gpioa.crl);
+        let coolant_out_thermistor = gpioa.pa6.into_analog(&mut gpioa.crl);
 
         let pins_a0_a3 = (
             gpioa.pa0.into_alternate_push_pull(&mut gpioa.crl),
@@ -129,13 +129,13 @@ mod app {
         );
 
         let buzzer = gpiob.pb11.into_push_pull_output(&mut gpiob.crh);
-        let pump_pwr = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
-        let fan_pwr = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
+        let pump_power = gpiob.pb12.into_push_pull_output(&mut gpiob.crh);
+        let fan_power = gpiob.pb13.into_push_pull_output(&mut gpiob.crh);
         let red_led = gpiob.pb14.into_push_pull_output(&mut gpiob.crh);
         let green_led = gpioa.pa8.into_push_pull_output(&mut gpioa.crh);
         let blue_led = gpiob.pb15.into_push_pull_output(&mut gpiob.crh);
         let mut led = RgbLed::new(red_led, green_led, blue_led);
-        led.exclusive_on(opilio_firmware::controller::Led::G);
+        led.exclusive_on(opilio_firmware::controller::Led::GREEN);
 
         let config = if let Ok(config) = Config::from_flash(&mut flash) {
             if config.is_valid() {
@@ -154,12 +154,13 @@ mod app {
         let temps = Temps::new(
             adc1,
             ambient_thermistor,
-            liquid_in_thermistor,
-            liquid_out_thermistor,
+            coolant_thermistor,
+            coolant_out_thermistor,
         );
 
-        let controller =
-            Controller::new(pwm_timer2, pump_pwr, fan_pwr, buzzer, temps, led);
+        let controller = Controller::new(
+            pwm_timer2, pump_power, fan_power, buzzer, temps, led,
+        );
 
         timer4_input_setup(gpiob.pb6, gpiob.pb7, gpiob.pb8, gpiob.pb9);
 

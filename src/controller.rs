@@ -1,7 +1,10 @@
 use cortex_m::prelude::_embedded_hal_adc_OneShot;
 use defmt::{debug, info, trace};
 use micromath::F32Ext;
-use opilio_lib::{error::Error, get_smart_duty, Config, Id, Result};
+use opilio_lib::{
+    error::Error, get_smart_duty, Config, Id, Result, SwitchMode,
+    TempratureInput,
+};
 use stm32f1xx_hal::{
     adc::Adc,
     gpio::{
@@ -51,13 +54,14 @@ impl ChannelMap for Id {
 }
 
 pub enum Led {
-    R,
-    G,
-    B,
-    All,
+    RED,
+    GREEN,
+    BLUE,
+    ALL,
 }
 
 pub struct RgbLed {
+    pub use_led: bool,
     red_led: PB14<Output<PushPull>>,
     green_led: PA8<Output<PushPull>>,
     blue_led: PB15<Output<PushPull>>,
@@ -71,6 +75,7 @@ impl RgbLed {
         blue_led: PB15<Output<PushPull>>,
     ) -> Self {
         Self {
+            use_led: true,
             red_led,
             green_led,
             blue_led,
@@ -79,42 +84,70 @@ impl RgbLed {
 
     #[inline]
     pub fn exclusive_on(&mut self, led: Led) {
-        match led {
-            Led::R => {
-                self.red_led.set_low();
-                self.green_led.set_high();
-                self.blue_led.set_high();
+        if self.use_led {
+            match led {
+                Led::RED => {
+                    self.red_led.set_low();
+                    self.green_led.set_high();
+                    self.blue_led.set_high();
+                }
+                Led::GREEN => {
+                    self.red_led.set_high();
+                    self.green_led.set_low();
+                    self.blue_led.set_high();
+                }
+                Led::BLUE => {
+                    self.red_led.set_high();
+                    self.green_led.set_high();
+                    self.blue_led.set_low();
+                }
+                Led::ALL => {
+                    self.red_led.set_low();
+                    self.green_led.set_low();
+                    self.blue_led.set_low();
+                }
             }
-            Led::G => {
-                self.red_led.set_high();
-                self.green_led.set_low();
-                self.blue_led.set_high();
-            }
-            Led::B => {
-                self.red_led.set_high();
-                self.green_led.set_high();
-                self.blue_led.set_low();
-            }
-            Led::All => {
-                self.red_led.set_low();
-                self.green_led.set_low();
-                self.blue_led.set_low();
-            }
+        } else {
+            self.off(led)
         }
     }
+
+    pub fn toggle(&mut self, led: Led) {
+        if self.use_led {
+            match led {
+                Led::RED => {
+                    self.red_led.toggle();
+                }
+                Led::GREEN => {
+                    self.green_led.toggle();
+                }
+                Led::BLUE => {
+                    self.blue_led.toggle();
+                }
+                Led::ALL => {
+                    self.red_led.toggle();
+                    self.green_led.toggle();
+                    self.blue_led.toggle();
+                }
+            }
+        } else {
+            self.off(led)
+        }
+    }
+
     #[inline]
     pub fn off(&mut self, led: Led) {
         match led {
-            Led::R => {
+            Led::RED => {
                 self.red_led.set_high();
             }
-            Led::G => {
+            Led::GREEN => {
                 self.green_led.set_high();
             }
-            Led::B => {
+            Led::BLUE => {
                 self.blue_led.set_high();
             }
-            Led::All => {
+            Led::ALL => {
                 self.red_led.set_high();
                 self.green_led.set_high();
                 self.blue_led.set_high();
@@ -127,15 +160,15 @@ pub struct Temps {
     adc: Adc<ADC1>,
     ambient_temp: f32,
     ambient_thermistor: PA4<Analog>,
-    liquid_in_temp: f32,
-    liquid_in_thermistor: PA5<Analog>,
-    liquid_out_temp: f32,
-    liquid_out_thermistor: PA6<Analog>,
+    coolant_temp: f32,
+    coolant_thermistor: PA5<Analog>,
+    coolant_out_temp: f32,
+    coolant_out_thermistor: PA6<Analog>,
 }
 
 pub enum Thermistor {
-    LiqIn,
-    LiqOut,
+    Coolant,
+    CoolantOut,
     Ambient,
 }
 
@@ -143,42 +176,43 @@ impl Temps {
     pub fn new(
         adc: Adc<ADC1>,
         ambient_thermistor: PA4<Analog>,
-        liquid_in_thermistor: PA5<Analog>,
-        liquid_out_thermistor: PA6<Analog>,
+        coolant_thermistor: PA5<Analog>,
+        coolant_out_thermistor: PA6<Analog>,
     ) -> Self {
         Self {
             adc,
             ambient_temp: DEFAULT_TEMP,
             ambient_thermistor,
-            liquid_in_temp: DEFAULT_TEMP,
-            liquid_in_thermistor,
-            liquid_out_temp: DEFAULT_TEMP,
-            liquid_out_thermistor,
+            coolant_temp: DEFAULT_TEMP,
+            coolant_thermistor,
+            coolant_out_temp: DEFAULT_TEMP,
+            coolant_out_thermistor,
         }
     }
 
     pub fn read(&mut self, thermistor: Thermistor) -> Result<()> {
         match thermistor {
-            Thermistor::LiqIn => {
+            Thermistor::Coolant => {
                 let adc_reading = self
                     .adc
-                    .read(&mut self.liquid_in_thermistor)
+                    .read(&mut self.coolant_thermistor)
                     .map_err(|_| Error::TempRead)?;
 
                 let new_temp = adc_reading_to_temp(adc_reading);
-                self.liquid_in_temp = (self.liquid_in_temp + new_temp) / 2.0;
+                self.coolant_temp = (self.coolant_temp + new_temp) / 2.0;
                 if new_temp < -20.0 {
                     return Err(Error::TempRead);
                 }
             }
-            Thermistor::LiqOut => {
+            Thermistor::CoolantOut => {
                 let adc_reading = self
                     .adc
-                    .read(&mut self.liquid_out_thermistor)
+                    .read(&mut self.coolant_out_thermistor)
                     .map_err(|_| Error::TempRead)?;
 
                 let new_temp = adc_reading_to_temp(adc_reading);
-                self.liquid_out_temp = (self.liquid_out_temp + new_temp) / 2.0;
+                self.coolant_out_temp =
+                    (self.coolant_out_temp + new_temp) / 2.0;
             }
             Thermistor::Ambient => {
                 let adc_reading = self
@@ -197,25 +231,26 @@ impl Temps {
 /// controller for most of the output of opilio
 /// Responsible for
 /// - Reading thermistor and converting it to temperature in C
-/// - Enable/Disable fan and pump mosfets (via mosfet drivers)
+/// - Enable/Disable fan and pump MOSFETs (via MOSFET drivers)
 /// - Controls Red an Blue single leds
 /// - Controls PWM signal for Fans and pumps
 pub struct Controller {
     temps: Temps,
-    buzzer: PB11<Output<PushPull>>,
-    fan_pwr: PB13<Output<PushPull>>,
+    buzzer_pin: PB11<Output<PushPull>>,
+    fan_power: PB13<Output<PushPull>>,
     led: RgbLed,
     max_duty_value: u16,
-    pump_pwr: PB12<Output<PushPull>>,
+    pump_power: PB12<Output<PushPull>>,
     pwm_timer: PwmTimer2,
+    use_buzzer: bool,
 }
 
 impl Controller {
     pub fn new(
         mut timer2: PwmTimer2,
-        pump_pwr: PB12<Output<PushPull>>,
-        fan_pwr: PB13<Output<PushPull>>,
-        mut buzzer: PB11<Output<PushPull>>,
+        pump_power: PB12<Output<PushPull>>,
+        fan_power: PB13<Output<PushPull>>,
+        buzzer: PB11<Output<PushPull>>,
         temps: Temps,
         led: RgbLed,
     ) -> Self {
@@ -228,20 +263,29 @@ impl Controller {
             timer2.set_duty(channel, min_duty);
         }
 
-        buzzer.set_high();
-
         Self {
             temps,
             max_duty_value,
             pwm_timer: timer2,
-            pump_pwr,
-            fan_pwr,
-            buzzer,
+            pump_power,
+            fan_power,
+            buzzer_pin: buzzer,
             led,
+            use_buzzer: false,
         }
     }
 
-    /// puts fan and pump mosfets in off mode
+    fn buzzer_on(&mut self) {
+        if self.use_buzzer {
+            self.buzzer_pin.set_high();
+        }
+    }
+
+    fn buzzer_off(&mut self) {
+        self.buzzer_pin.set_low();
+    }
+
+    /// puts fan and pump MOSFETs in off mode
     /// blue signal led is set high
     fn standby_mode(&mut self) {
         // // shut down pwm
@@ -249,24 +293,27 @@ impl Controller {
             self.pwm_timer.set_duty(channel, 0);
         }
 
-        if self.pump_pwr.is_set_high() {
+        if self.pump_power.is_set_high() {
             info!("turning off pump");
-            self.pump_pwr.set_low();
+            self.pump_power.set_low();
         }
 
-        if self.fan_pwr.is_set_high() {
+        if self.fan_power.is_set_high() {
             info!("turning off fans");
-            self.fan_pwr.set_low();
+            self.fan_power.set_low();
         }
 
-        self.led.exclusive_on(Led::B);
+        self.led.toggle(Led::BLUE);
+        self.led.off(Led::GREEN);
     }
 
-    /// puts fan and pump mosfets in on mode
+    /// puts fan and pump MOSFETs in on mode
     fn active_mode(&mut self) {
-        if self.pump_pwr.is_set_low() {
+        if self.pump_power.is_set_low() {
             info!("enabling pump");
-            self.pump_pwr.set_high();
+            self.pump_power.set_high();
+            self.led.off(Led::BLUE);
+            self.led.exclusive_on(Led::GREEN);
         }
     }
 
@@ -277,46 +324,66 @@ impl Controller {
             self.standby_mode();
             return;
         }
+        self.use_buzzer = config.general.buzzer == SwitchMode::On;
+        self.led.use_led = config.general.led == SwitchMode::On;
 
         self.active_mode();
 
-        let (liquid_in_temp, ambient_temp, liquid_out_temp) =
-            if self.fetch_current_temps().is_ok() {
+        let (coolant_temp, ambient_temp, coolant_out_temp) =
+            if self.fetch_current_temps(config.general.temp_input).is_ok() {
+                self.led.off(Led::RED);
+                self.buzzer_off();
                 (
-                    self.get_liquid_in_temp(),
+                    self.get_coolant_temp(),
                     self.get_ambient_temp(),
-                    self.get_liquid_out_temp(),
+                    self.get_coolant_out_temp(),
                 )
             } else {
                 // assume we are running hot
                 // in case thermistor is faulty or unplugged
-                (35.0, 20.0, 30.0)
+                self.led.toggle(Led::RED);
+                self.buzzer_on();
+
+                (35.0, 20.0, 35.0)
             };
         debug!(
-            "liquid_in {}C, liquid_out_temp {}C, ambient {}C,",
-            liquid_in_temp, liquid_out_temp, ambient_temp
+            "coolant {}C, coolant_out_temp {}C, ambient {}C,",
+            coolant_temp, coolant_out_temp, ambient_temp
         );
+
+        let coolant_temp = match config.general.temp_input {
+            TempratureInput::Coolant => coolant_temp,
+            TempratureInput::CoolantOut => coolant_out_temp,
+        };
 
         if let Some(ref smart_mode) = config.smart_mode {
             let duty_to_set = get_smart_duty(
-                liquid_in_temp,
+                coolant_temp,
                 ambient_temp,
                 smart_mode.trigger_above_ambient,
                 smart_mode.upper_temp,
                 self.max_duty_value,
-                self.fan_pwr.is_set_high(),
+                self.fan_power.is_set_high(),
             );
+
+            if coolant_temp > smart_mode.upper_temp {
+                self.led.toggle(Led::BLUE);
+                self.buzzer_on();
+            } else {
+                self.led.off(Led::BLUE);
+                self.buzzer_off();
+            }
 
             debug!("smart duty {}", duty_to_set);
 
             if duty_to_set > 0 {
-                self.fan_pwr.set_high();
+                self.fan_power.set_high();
                 // set duty except the pump
                 for channel in [Channel::C2, Channel::C3, Channel::C4] {
                     self.pwm_timer.set_duty(channel, duty_to_set);
                 }
             } else {
-                self.fan_pwr.set_low()
+                self.fan_power.set_low()
             }
 
             debug!("{}:{}", self.max_duty_value, smart_mode.pump_duty);
@@ -326,13 +393,13 @@ impl Controller {
             debug!("pump duty {}", pump_duty);
             self.pwm_timer.set_duty(Channel::C1, pump_duty as u16);
         } else {
-            if self.fan_pwr.is_set_low() {
+            if self.fan_power.is_set_low() {
                 debug!("enabling fan");
-                self.fan_pwr.set_high();
+                self.fan_power.set_high();
             }
             for setting in &config.settings {
                 let duty_to_set =
-                    setting.get_duty(liquid_in_temp, self.max_duty_value);
+                    setting.get_duty(coolant_temp, self.max_duty_value);
                 debug!("{}, duty {}", setting, duty_to_set);
 
                 self.pwm_timer.set_duty(setting.id.channel(), duty_to_set);
@@ -341,13 +408,13 @@ impl Controller {
     }
 
     #[inline]
-    pub fn get_liquid_in_temp(&mut self) -> f32 {
-        self.temps.liquid_in_temp
+    pub fn get_coolant_temp(&mut self) -> f32 {
+        self.temps.coolant_temp
     }
 
     #[inline]
-    pub fn get_liquid_out_temp(&mut self) -> f32 {
-        self.temps.liquid_out_temp
+    pub fn get_coolant_out_temp(&mut self) -> f32 {
+        self.temps.coolant_out_temp
     }
 
     #[inline]
@@ -356,19 +423,20 @@ impl Controller {
     }
 
     /// reads temperature in celsius degrees
-    /// red led is turned on in case of error
-    pub fn fetch_current_temps(&mut self) -> Result<()> {
+    fn fetch_current_temps(
+        &mut self,
+        selected_input: TempratureInput,
+    ) -> Result<()> {
         self.temps.read(Thermistor::Ambient).ok();
-        self.temps.read(Thermistor::LiqOut).ok();
-
-        if self.temps.read(Thermistor::LiqIn).is_ok() {
-            self.led.exclusive_on(Led::G);
-            self.buzzer.set_low();
-            Ok(())
-        } else {
-            self.led.exclusive_on(Led::R);
-            self.buzzer.set_high();
-            Err(Error::TempRead)
+        match selected_input {
+            TempratureInput::Coolant => {
+                self.temps.read(Thermistor::CoolantOut).ok();
+                self.temps.read(Thermistor::Coolant)
+            }
+            TempratureInput::CoolantOut => {
+                self.temps.read(Thermistor::Coolant).ok();
+                self.temps.read(Thermistor::CoolantOut)
+            }
         }
     }
 }

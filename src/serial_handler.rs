@@ -91,9 +91,9 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                     fan1_rpm,
                     fan2_rpm,
                     fan3_rpm,
-                    liquid_temp: controller.get_liquid_in_temp(),
+                    coolant_temp: controller.get_coolant_temp(),
                     ambient_temp: controller.get_ambient_temp(),
-                    liquid_out_temp: controller.get_liquid_out_temp(),
+                    coolant_out_temp: controller.get_coolant_out_temp(),
                 };
                 let otw =
                     OTW::serialised_vec(Msg::Stats, DataRef::Stats(&stats))?;
