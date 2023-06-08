@@ -44,28 +44,29 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
         flash: &mut flash::Parts,
     ) -> Result<()> {
         let mut buf = [0u8; 256];
-        let mut cursor =
+        let mut bytes_read =
             self.serial.read(&mut buf).map_err(|_| Error::SerialRead)?;
 
-        if cursor == 0 {
-            return Ok(());
-        }
-        defmt::debug!("bytes read: {}", cursor);
+        defmt::debug!("bytes read: {}", bytes_read);
         defmt::trace!("BUF {=[?]}", buf);
+
         loop {
-            match self.serial.read(&mut buf[cursor..]) {
+            match self.serial.read(&mut buf[bytes_read..]) {
                 Ok(count) => {
-                    defmt::info!("count: {}", count);
-                    if count == 0 {
-                        break;
-                    }
-                    cursor += count
+                    bytes_read += count;
+                    defmt::trace!("BUF {=[?]}", buf);
+                    defmt::trace!("bytes read: {}", bytes_read);
                 }
                 Err(e) => match e {
                     UsbError::WouldBlock => break,
                     _ => return Err(Error::SerialRead),
                 },
             }
+        }
+
+        // we can't serialise a message with less than 2 bytes
+        if bytes_read < 2 {
+            return Err(Error::Deserialize);
         }
 
         let otw_in = OTW::from_bytes(&buf)?;
@@ -82,6 +83,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
                         .write(bytes.as_ref())
                         .map_err(|_| Error::SerialWrite)?;
                 }
+                defmt::info!("Sent {} bytes", sent);
             }
             Msg::GetStats => {
                 let (pump1_rpm, fan1_rpm, fan2_rpm, fan3_rpm) =
