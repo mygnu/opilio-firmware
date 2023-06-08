@@ -64,7 +64,7 @@ impl<B: UsbBus + 'static> UsbHandler<B> {
             }
         }
 
-        // we can't serialise a message with less than 2 bytes
+        // we can't deserialise a message with less than 2 bytes
         if bytes_read < 2 {
             return Err(Error::Deserialize);
         }
