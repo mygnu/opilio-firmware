@@ -19,7 +19,7 @@ use crate::PwmTimer2;
 
 /// 10k resistor measured resistance in Ohms
 const R_10K: f32 = 10000.0;
-/// voltage to the VREF
+/// voltage to the V-REF
 const V_SUPPLY: f32 = 3.2925;
 /// B-coefficient of the thermistor (guessed)
 const B_PARAM: f32 = 3700.0;
